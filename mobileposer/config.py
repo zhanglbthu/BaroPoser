@@ -2,14 +2,13 @@ import torch
 from pathlib import Path
 from enum import Enum, auto
 
-
 class train_hypers:
     """Hyperparameters for training."""
     batch_size = 256
     num_workers = 8
     num_epochs = 60
     accelerator = "gpu"
-    device = 0
+    device = 8
     lr = 1e-3
 
 
@@ -19,9 +18,8 @@ class finetune_hypers:
     num_workers = 8
     num_epochs = 15
     accelerator = "gpu"
-    device = 0
+    device = [0, 1, 2, 3, 4, 5, 6, 7]
     lr = 5e-5
-
 
 class paths:
     """Relevant paths for MobilePoser. Change as necessary."""
@@ -42,13 +40,20 @@ class paths:
     temp_dir = Path("data/livedemo/temp")
     live_record_dir = Path("data/livedemo/record")
     
+    # TotalCapture dataset
     calibrated_totalcapture = Path("/root/autodl-tmp/mobileposer/dataset_raw/TotalCapture/calibrated")
     raw_totalcapture_official = Path("/root/autodl-tmp/mobileposer/dataset_raw/TotalCapture/official")
     processed_totalcapture = Path("/root/autodl-tmp/mobileposer/dataset_work/TotalCapture")
     
+    vicon_gt_dir = Path('/root/autodl-tmp/mobileposer/dataset_raw/TotalCapture/official')
+    imu_dir = Path('/root/autodl-tmp/mobileposer/dataset_raw/TotalCapture/gryo_mag')
+    calib_dir = Path('/root/autodl-tmp/mobileposer/dataset_raw/TotalCapture/imu')
+    AMASS_smpl_dir = Path('/root/autodl-tmp/mobileposer/dataset_raw/AMASS/TotalCapture')
+    DIP_smpl_dir = Path('/root/autodl-tmp/mobileposer/dataset_raw/TotalCapture/calibrated')
+    
 class model_config:
     """MobilePoser Model configurations."""
-    # device
+    
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     
     # joint set
@@ -62,6 +67,10 @@ class model_config:
     future_frames = 5
     total_frames = past_frames + future_frames
 
+    wheights = True
+    winit = False
+    combo_id = 'lw_rp_h'
+    name = '60fps_heights'
 
 class amass:
     """AMASS dataset information."""
@@ -105,7 +114,7 @@ class amass:
 class datasets:
     """Dataset information."""
     # FPS of data
-    fps = 30
+    fps = 60
 
     # DIP dataset
     dip_test = "dip_test.pt"

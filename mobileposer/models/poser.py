@@ -16,7 +16,7 @@ class Poser(L.LightningModule):
     Inputs: N IMUs.
     Outputs: SMPL Pose Parameters (as 6D Rotations).
     """
-    def __init__(self, finetune: bool=False, height: bool=True):
+    def __init__(self, finetune: bool=False, imu_num: int=3, height: bool=False, winit=False):
         super().__init__()
         
         # constants
@@ -24,16 +24,20 @@ class Poser(L.LightningModule):
         self.finetune = finetune
         self.hypers = finetune_hypers if finetune else train_hypers
 
-        # body model
-        self.bodymodel = art.model.ParametricModel(paths.smpl_file, device=self.C.device)
-        self.global_to_local_pose = self.bodymodel.inverse_kinematics_R
+        # input dimensions
+        imu_input_dim = imu_num * 12
+        if height:
+            self.input_dim = self.C.n_output_joints*3 + imu_input_dim + 2
+        else:
+            self.input_dim = self.C.n_output_joints*3 + imu_input_dim
 
         # model definitions
-        self.pose = RNN(self.C.n_output_joints*3 + self.C.n_imu + 2, joint_set.n_reduced*6, 256) # pose estimation model
-
+        self.pose = RNN(self.input_dim, joint_set.n_reduced*6, 256) # pose estimation model
+        
         # log input and output dimensions
-        print(f"Input dimensions: {self.C.n_output_joints*3 + self.C.n_imu + 2}")
-        print(f"Output dimensions: {joint_set.n_reduced*6}")
+        if torch.cuda.current_device() == 0:
+            print(f"Input dimensions: {self.input_dim}")
+            print(f"Output dimensions: {joint_set.n_reduced*6}")
         
         # loss function
         self.loss = nn.MSELoss()
@@ -57,7 +61,7 @@ class Poser(L.LightningModule):
         pose = art.math.r6d_to_rotation_matrix(reduced_pose).view(-1, joint_set.n_reduced, 3, 3)
         pose = reduced_pose_to_full(pose.unsqueeze(0)).squeeze(0).view(-1, 24, 3, 3)
         pred_pose = self.global_to_local_pose(pose)
-        for ignore in joint_set.ignored: pred_pose[:, ignore] = torch.eye(3, device=self.C.device)
+        for ignore in joint_set.ignored: pred_pose[:, ignore] = torch.eye(3, device=self.device)
         pred_pose[:, 0] = pose[:, 0]
         return pred_pose
 
@@ -81,7 +85,7 @@ class Poser(L.LightningModule):
         target_joints = joints.view(B, S, -1)
 
         # generate noise for target joints for beter robustness
-        noise = torch.randn(target_joints.size()).to(self.C.device) * 0.04 # gaussian noise with std = 0.04
+        noise = torch.randn(target_joints.size()).to(self.device) * 0.04 # gaussian noise with std = 0.04
         noisy_joints = target_joints + noise
 
         # predict pose
@@ -96,6 +100,7 @@ class Poser(L.LightningModule):
         # joint position loss
         if self.use_pos_loss:
             full_pose_p = self._reduced_global_to_full(pose_p)
+            
             joints_p = self.bodymodel.forward_kinematics(pose=full_pose_p.view(-1, 216))[1].view(B, S, -1)
             loss += self.loss(joints_p, target_joints)
 
@@ -128,6 +133,11 @@ class Poser(L.LightningModule):
         imu_inputs, input_lengths = inputs
         return self(imu_inputs, input_lengths)
 
+    # train epoch start
+    def on_fit_start(self):
+        self.bodymodel = art.model.ParametricModel(paths.smpl_file, device=self.device)
+        self.global_to_local_pose = self.bodymodel.inverse_kinematics_R
+    
     def on_train_epoch_end(self):
         self.epoch_end_callback(self.training_step_loss, loop_type="train")
         self.training_step_loss.clear()    # free memory

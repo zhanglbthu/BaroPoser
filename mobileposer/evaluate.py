@@ -16,7 +16,7 @@ from pathlib import Path
 from mobileposer.utils.file_utils import (
     get_best_checkpoint
 )
-
+from mobileposer.config import model_config
 
 class PoseEvaluator:
     def __init__(self):
@@ -78,8 +78,6 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
     device = model_config.device
 
     # load data
-    # xs: [contact_seq_num, N, 60], ys: ([contact_seq_num, N, 144], [contact_seq_num, N, 3])
-    # xs, ys, zs = zip(*[(imu.to(device), (pose.to(device), tran), (velocity.to(device), contact.to(device))) for imu, pose, joint, tran, velocity, contact in dataset])
     xs, ys = zip(*[(imu.to(device), (pose.to(device), tran)) for imu, pose, joint, tran in dataset])
     joints_t = [joint.to(device) for _, _, joint, _ in dataset]
 
@@ -105,9 +103,6 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
             if getenv("ONLINE"):
                 online_results = [model.forward_online(f, debug=True, tran_nn=tran_nn) for f in torch.cat((x, x[-1].repeat(num_future_frame, 1)))]
                 pose_p_online, joint_p_online, tran_p_online, contact_p_online = [torch.stack(_)[num_future_frame:] for _ in zip(*online_results)]
-                
-                # # 将tran_p的y值设为ground truth的y值
-                # tran_p_online[:, 1] = tran_t[:, 1]
 
             if evaluate_tran:
                 # compute gt move distance at every frame 
@@ -153,9 +148,6 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
                             'joint_p': joint_p_online},
                            save_dir / f"{idx}.pt")
 
-    # print joint errors
-    # print('============== offline ================')
-    # evaluator.print(torch.stack(offline_errs).mean(dim=0))
     if getenv("ONLINE"):
         print('============== online ================')
         evaluator.print(torch.stack(online_errs).mean(dim=0))
@@ -163,8 +155,6 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
     log_path = save_dir / 'log.txt'
     
     for online_err in online_errs:
-        # with open('data/eval/quantitative/mobileposer_wphys/imuposer.txt', 'a', encoding='utf-8') as f:
-        #     evaluator.print_single(online_err, file=f)
         with open(log_path, 'a', encoding='utf-8') as f:
             evaluator.print_single(online_err, file=f)
     
@@ -178,6 +168,7 @@ if __name__ == '__main__':
     parser.add_argument('--model', type=str, required=True)
     parser.add_argument('--dataset', type=str, default='dip')
     parser.add_argument('--name', type=str, default='default')
+    parser.add_argument('--combo_id', type=str, default='lw_rp_h')
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
@@ -186,21 +177,13 @@ if __name__ == '__main__':
 
     # load model 
     model = load_model(args.model)
-
-    # # load_translation_model
-    # ckpt_dir = Path('data') / 'checkpoints' / 'floor' / 'velocity_new'
-    # ckpt_name = get_best_checkpoint(ckpt_dir)
-    # velocity_model = Velocity_new.load_from_checkpoint(ckpt_dir / ckpt_name)
-    
-    # load dataset
     
     fold = 'test'
-    if args.debug:
-        fold = 'debug'
     
-    dataset = PoseDataset(fold=fold, evaluate=args.dataset, combo_id='lw_rp_h')
+    dataset = PoseDataset(fold=fold, evaluate=args.dataset, combo_id=args.combo_id, 
+                          wheights=model_config.wheights)
     
-    save_dir = Path('data') / 'eval' / args.name / args.dataset
+    save_dir = Path('data') / 'eval' / args.name / args.combo_id / args.dataset
     save_dir.mkdir(parents=True, exist_ok=True)
     
     # evaluate pose

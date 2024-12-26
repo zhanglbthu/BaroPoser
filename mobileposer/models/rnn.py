@@ -127,7 +127,7 @@ class RNNWithInit(RNN):
                  rnn_type='lstm', load_weight_file: str = None):
         r"""
         Init an RNNWithInit net.
-
+        
         :param input_size: Input size.
         :param output_size: Output size.
         :param hidden_size: Hidden size for RNN.

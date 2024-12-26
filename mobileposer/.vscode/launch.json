@@ -3,27 +3,27 @@
     // 悬停以查看现有属性的描述。
     // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
-    "configurations": [
-
-
-        
+    "configurations": [       
         {
             "name": "evaluate dip",
             "type": "debugpy",
             "request": "launch",
             "program": "evaluate.py",
             "console": "integratedTerminal",
-            "args": ["--model", "data/checkpoints/mobileposer_rheight_finetuneddip/model_finetuned.pth",
-                     "--dataset", "dip"],
+            "args": ["--model", "data/checkpoints/mobileposer_origin_60fps/lw_rp_h/base_model.pth",
+                     "--dataset", "dip",
+                     "--name", "origin_60fps",
+                     "--combo_id", "lw_rp_h"],
             "justMyCode": false
         },
         {
-            "name": "process totalcapture",
+            "name": "process dataset",
             "type": "debugpy",
             "request": "launch",
             "program": "process.py",
             "console": "integratedTerminal",
-            "args": ["--dataset", "totalcapture"],
+            "args": ["--dataset", "dip",
+                     "--heights"],
             "justMyCode": false
         },
         {

@@ -16,19 +16,25 @@ class FootContact(L.LightningModule):
     Outputs: Foot Contact Probability ([s_lfoot, s_rfoot]).
     """
 
-    def __init__(self):
+    def __init__(self, finetune: bool=False, imu_num: int=3, height: bool=False, winit=False):
         super().__init__()
         
         # constants
         self.C = model_config
         self.hypers = train_hypers
 
+        # input dimensions
+        imu_input_dim = imu_num * 12
+        if height:
+            self.input_dim = self.C.n_output_joints*3 + imu_input_dim + 2
+        else:
+            self.input_dim = self.C.n_output_joints*3 + imu_input_dim
+
         # model definitions
-        self.bodymodel = art.model.ParametricModel(paths.smpl_file, device=self.C.device)
-        self.footcontact = RNN(self.C.n_output_joints * 3 + self.C.n_imu + 2, 2, 64)  # foot-ground probability model
+        self.footcontact = RNN(self.input_dim, 2, 64)  # foot-ground probability model
 
         # log input and output dimensions
-        print(f"Input dimensions: {self.C.n_output_joints*3 + self.C.n_imu + 2}")
+        print(f"Input dimensions: {self.input_dim}")
         print(f"Output dimensions: 2")
         
         # loss function (binary cross-entropy)
@@ -58,7 +64,7 @@ class FootContact(L.LightningModule):
         foot_contacts = outputs['foot_contacts']
 
         # add noise to target joints for beter robustness
-        noise = torch.randn(target_joints.size()).to(self.C.device) * 0.04 # gaussian noise with std = 0.04
+        noise = torch.randn(target_joints.size()).to(self.device) * 0.04 # gaussian noise with std = 0.04
         target_joints += noise
         
         # predict foot-ground contact probability
@@ -85,6 +91,9 @@ class FootContact(L.LightningModule):
         imu_inputs, input_lengths = inputs
         return self(imu_inputs, input_lengths)
 
+    def on_fit_start(self):
+        self.bodymodel = art.model.ParametricModel(paths.smpl_file, device=self.device)
+    
     def on_train_epoch_end(self):
         self.epoch_end_callback(self.training_step_loss, loop_type="train")
         self.training_step_loss.clear()    # free memory

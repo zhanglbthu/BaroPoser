@@ -91,10 +91,8 @@ def normalize_and_concat(glb_acc, glb_rot):
     data = torch.cat((acc.flatten(1), ori.flatten(1)), dim=1)
     return data
 
-
 def print_title(s):
     print('============ %s ============' % s)
-
 
 class Body(enum.Enum):
     r"""

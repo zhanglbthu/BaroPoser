@@ -11,83 +11,24 @@ from mobileposer.articulate import math
 from mobileposer.config import paths, datasets
 
 from pathlib import Path
+import articulate as art
+from utils.data_utils import _foot_contact, _get_heights, _foot_min, _get_ground
 
-
-# specify target FPS
-TARGET_FPS = 30
-
-# left wrist, right wrist, left thigh, right thigh, head, pelvis
-vi_mask = torch.tensor([1961, 5424, 876, 4362, 411, 3021])
-ji_mask = torch.tensor([18, 19, 1, 2, 15, 0])
+# left wrist, right wrist, left thigh, right thigh, head, pelvis, left shank, right shank
+vi_mask = torch.tensor([1961, 5424, 876, 4362, 411, 3021, 1176, 4662])
+ji_mask = torch.tensor([18, 19, 1, 2, 15, 0, 4, 5])
 body_model = ParametricModel(paths.smpl_file)
 
 def _syn_acc(v, smooth_n=4):
     """Synthesize accelerations from vertex positions."""
     mid = smooth_n // 2
-    acc = torch.stack([(v[i] + v[i + 2] - 2 * v[i + 1]) * 900 for i in range(0, v.shape[0] - 2)])
+    acc = torch.stack([(v[i] + v[i + 2] - 2 * v[i + 1]) * 3600 for i in range(0, v.shape[0] - 2)])
     acc = torch.cat((torch.zeros_like(acc[:1]), acc, torch.zeros_like(acc[:1])))
     if mid != 0:
         acc[smooth_n:-smooth_n] = torch.stack(
-            [(v[i] + v[i + smooth_n * 2] - 2 * v[i + smooth_n]) * 900 / smooth_n ** 2
+            [(v[i] + v[i + smooth_n * 2] - 2 * v[i + smooth_n]) * 3600 / smooth_n ** 2
              for i in range(0, v.shape[0] - smooth_n * 2)])
     return acc
-
-def _relative_height(vert):
-    '''
-    Compute relative height of the body.
-    '''
-    relative_height = vert[:, vi_mask[0], 1] - vert[:, vi_mask[3], 1] # left wrist - right thigh
-    return relative_height
-
-def _foot_min(joint, fix=False):
-    lheel_y = joint[:, 7, 1]
-    rheel_y = joint[:, 8, 1]
-    
-    ltoe_y = joint[:, 10, 1]
-    rtoe_y = joint[:, 11, 1]
-    
-    # 取四个点的最小值 [N, 1]
-    points = torch.stack((lheel_y, rheel_y, ltoe_y, rtoe_y), dim=1)
-    min_y, _ = torch.min(points, dim=1, keepdim=True)   
-    assert min_y.shape == (joint.shape[0], 1)
-    
-    if fix:
-        # min_y所有值都取第一帧
-        min_y[:] = min_y[0]
-    
-    return min_y
-
-def _get_heights(vert, ground):
-    pocket = vert[:, vi_mask[3], 1].unsqueeze(1)
-    pocket_height = vert[:, vi_mask[3], 1].unsqueeze(1) - ground
-    wrist_height = vert[:, vi_mask[0], 1].unsqueeze(1) - ground
-    
-    # return [N, 2]
-    return torch.stack((pocket_height, wrist_height), dim=1)
-    
-    # root_height = vert[:, vi_mask[5], 1].unsqueeze(1) - ground
-    # wrist_height = vert[:, vi_mask[0], 1].unsqueeze(1) - ground
-    
-    # return torch.stack((root_height, wrist_height), dim=1)
-
-def _foot_contact(fp_list):
-    """
-    判断 n 帧中是否连续有至少一只脚接触地面。
-    
-    参数:
-        fp_list (list of tuples): 包含 n 帧的接触概率，每一帧的格式为 (fp[0], fp[1])。
-                                fp[0] 和 fp[1] 分别表示左右脚的接触概率或状态。
-    
-    返回:
-        bool: 如果 n 帧中至少有一只脚接触地面，则返回 True；否则返回 False。
-    """
-    for fp in fp_list:
-        if fp[0] or fp[1]:  # 判断当前帧是否有一只脚接触地面
-            continue
-        else:
-            # 只要有一帧没有脚接触地面，返回 False
-            return False
-    return True  # 所有帧都有至少一只脚接触地面
 
 def _foot_ground_probs(joint):
     """Compute foot-ground contact probabilities."""
@@ -99,39 +40,7 @@ def _foot_ground_probs(joint):
     rfoot_contact = torch.cat((torch.zeros(1, dtype=torch.int), rfoot_contact))
     return torch.stack((lfoot_contact, rfoot_contact), dim=1)
 
-def process_amass(dataset=None):
-    def _foot_ground_probs(joint):
-        """Compute foot-ground contact probabilities."""
-        dist_lfeet = torch.norm(joint[1:, 10] - joint[:-1, 10], dim=1)
-        dist_rfeet = torch.norm(joint[1:, 11] - joint[:-1, 11], dim=1)
-        lfoot_contact = (dist_lfeet < 0.008).int()
-        rfoot_contact = (dist_rfeet < 0.008).int()
-        lfoot_contact = torch.cat((torch.zeros(1, dtype=torch.int), lfoot_contact))
-        rfoot_contact = torch.cat((torch.zeros(1, dtype=torch.int), rfoot_contact))
-        return torch.stack((lfoot_contact, rfoot_contact), dim=1)
-    
-    def _get_pocket_height(vert):
-        rp_height = vert[vi_mask[3], 1]
-        min_height = torch.min(vert[:, 1], dim=0).values
-        
-        return rp_height - min_height
-    
-    def _get_scale(shape):
-        shape = torch.tensor(shape, dtype=torch.float32).unsqueeze(0)
-        
-        zero_pose = torch.eye(3).unsqueeze(0).unsqueeze(0).repeat(1, 24, 1, 1)
-        zero_shape = torch.zeros(10).unsqueeze(0)
-        
-        _, _, vert_zero = body_model.forward_kinematics(zero_pose, zero_shape, calc_mesh=True)
-        _, _, vert_shape = body_model.forward_kinematics(zero_pose, shape, calc_mesh=True)
-        
-        height_zero = _get_pocket_height(vert_zero.squeeze(0))
-        height_shape = _get_pocket_height(vert_shape.squeeze(0))
-        
-        scale = height_shape / height_zero
-        
-        return scale
-    
+def process_amass(dataset=None, heights: bool=False):
     # enable skipping processed files
     try:
         processed = [fpath.name for fpath in (paths.processed_datasets).iterdir()]
@@ -142,40 +51,29 @@ def process_amass(dataset=None):
         processed = []
     
     for ds_name in datasets.amass_datasets:
-        
-        if dataset:
-            if ds_name != dataset:
-                continue
-        
         # skip processed 
         if f"{ds_name}.pt" in processed:
             continue
 
         data_pose, data_trans, data_beta, length = [], [], [], []
-        scale_data = []
         
         print("\rReading", ds_name)
 
         for npz_fname in tqdm(sorted(glob.glob(os.path.join(paths.raw_amass, ds_name, "*/*_poses.npz")))):
-            # 如果npz_frame不以36开头，那么就跳过
             
             try: cdata = np.load(npz_fname)
             except: continue
 
             framerate = int(cdata['mocap_framerate'])
-            if framerate not in [120, 60, 59]:
-                continue
 
             # enable downsampling
-            step = max(1, round(framerate / TARGET_FPS))
+            if framerate == 120: step = 2
+            elif framerate == 60 or framerate == 59: step = 1
+            else: continue
 
             data_pose.extend(cdata['poses'][::step].astype(np.float32))
             data_trans.extend(cdata['trans'][::step].astype(np.float32))
             data_beta.append(cdata['betas'][:10])
-            
-            shape = cdata['betas'][:10]
-            scale_data.append(_get_scale(shape))
-            
             length.append(cdata['poses'][::step].shape[0])
 
         if len(data_pose) == 0:
@@ -186,7 +84,6 @@ def process_amass(dataset=None):
         shape = torch.tensor(np.asarray(data_beta, np.float32))
         tran = torch.tensor(np.asarray(data_trans, np.float32))
         pose = torch.tensor(np.asarray(data_pose, np.float32)).view(-1, 52, 3)
-        scale = torch.tensor(np.asarray(scale_data, np.float32))
 
         # include the left and right index fingers in the pose
         pose[:, 23] = pose[:, 37]     # right hand 
@@ -201,12 +98,38 @@ def process_amass(dataset=None):
         print("Synthesizing IMU accelerations and orientations")
         b = 0
         out_pose, out_shape, out_tran, out_joint, out_vrot, out_vacc, out_contact = [], [], [], [], [], [], []
-        out_rheight, out_scale = [], []
+        out_ground, out_heights = [], []
+        
         for i, l in tqdm(list(enumerate(length))):
             if l <= 12: b += l; print("\tdiscard one sequence with length", l); continue
             p = math.axis_angle_to_rotation_matrix(pose[b:b + l]).view(-1, 24, 3, 3)
+            
+            if heights:
+                _, joint = body_model.forward_kinematics(p, shape[i], tran[b:b + l], calc_mesh=False)
+                fc_probs = _foot_ground_probs(joint).clone()
+                ground = _get_ground(joint, fc_probs, l)
+                # f_min = _foot_min(joint)
+                # cur_ground = f_min[0].item()
+                # ground = torch.full_like(f_min, cur_ground)
+                
+                # for frame in range(1, l+1):
+                #     g = f_min[frame - 1]
+                #     if frame >= contact_num:
+                #         fp_last_n = fc_probs[frame - contact_num: frame]
+                #     else:
+                #         fp_last_n = fc_probs[:frame]
+                    
+                #     ground[frame-1] = cur_ground
+                #     contact = _foot_contact(fp_last_n)
+                #     residual = abs(g - cur_ground)
+                #     if contact and residual > 1e-3:
+                #         ground[frame-1] = g
+                #         cur_ground = g
+            else:
+                ground = torch.zeros((l, 1))
+            
             grot, joint, vert = body_model.forward_kinematics(p, shape[i], tran[b:b + l], calc_mesh=True)
-
+            
             out_pose.append(p.clone())  # N, 24, 3, 3
             out_tran.append(tran[b:b + l].clone())  # N, 3
             out_shape.append(shape[i].clone())  # 10
@@ -214,8 +137,8 @@ def process_amass(dataset=None):
             out_vacc.append(_syn_acc(vert[:, vi_mask]))  # N, 6, 3
             out_contact.append(_foot_ground_probs(joint).clone()) # N, 2
             out_vrot.append(grot[:, ji_mask])  # N, 6, 3, 3
-            out_rheight.append(_relative_height(vert))  # N
-            out_scale.append(scale[i].clone())  # N
+            out_ground.append(ground.clone())  # N, 1
+            out_heights.append(_get_heights(vert, ground, vi_mask))  # N, 2
             b += l
 
         print("Saving...")
@@ -228,8 +151,8 @@ def process_amass(dataset=None):
             'acc': out_vacc,
             'ori': out_vrot,
             'contact': out_contact,
-            'rheight': out_rheight,
-            'scale': out_scale
+            'ground': out_ground,
+            'heights': out_heights
         }
         if dataset:
             data_path = paths.processed_datasets / "debug" / f"{ds_name}.pt"
@@ -238,160 +161,227 @@ def process_amass(dataset=None):
         torch.save(data, data_path)
         print(f"Synthetic AMASS dataset is saved at: {data_path}")
 
-def process_totalcapture():
-    """Preprocess TotalCapture dataset for testing."""
-
-    inches_to_meters = 0.0254
-    pos_file = 'gt_skel_gbl_pos.txt'
-    ori_file = 'gt_skel_gbl_ori.txt'
-
-    subjects = ['S1', 'S2', 'S3', 'S4', 'S5']
-
-    # # Load poses from processed AMASS dataset
-    # amass_tc = torch.load(os.path.join(paths.processed_datasets, "AMASS", "TotalCapture", "pose.pt"))
-    # tc_poses = {pose.shape[0]: pose for pose in amass_tc}
-
-    processed, failed_to_process = [], []
-    accs, oris, poses, trans = [], [], [], []
-    heights = []
-    rheights = []
+def process_totalcapture_raw(debug=False):
     
-    # downsampling
-    step = max(1, round(60 / TARGET_FPS))
+    # if paths.eval_dir / 'totalcapture_raw.pt' exists, skip processing
+    if (paths.eval_dir / 'totalcapture_raw.pt').exists():
+        return
     
-    for file in sorted(os.listdir(paths.calibrated_totalcapture)):
-        if not file.endswith(".pkl") or ('s5' in file and 'acting3' in file) or not any(file.startswith(s.lower()) for s in subjects):
-            continue
-
-        data = pickle.load(open(os.path.join(paths.calibrated_totalcapture, file), 'rb'), encoding='latin1')
-        ori = torch.from_numpy(data['ori']).float() # [N, 6, 3, 3]
-        acc = torch.from_numpy(data['acc']).float() # [N, 6, 3]
-
-        # load pose from dip calibration
-        pose = torch.from_numpy(data['gt']).float().view(-1, 24, 3)
-        
-        # downsample
-        acc = acc[::step].contiguous()
-        ori = ori[::step].contiguous()
-        pose = pose[::step].contiguous()
-        
-        # # Load pose data from AMASS
-        # try: 
-        #     name_split = file.split("_")
-        #     subject, activity = name_split[0], name_split[1].split(".")[0]
-        #     pose_npz = np.load(os.path.join(paths.raw_amass, "TotalCapture", subject, f"{activity}_poses.npz"))
-        #     pose = torch.from_numpy(pose_npz['poses']).float().view(-1, 52, 3)
-            
-        #     # include the left and right index fingers in the pose
-        #     pose[:, 23] = pose[:, 37]     # right hand
-        #     pose = pose[:, :24].clone()   # only use body + right and left fingers
-            
-        #     # align AMASS global frame with DIP
-        #     amass_rot = torch.tensor([[[1, 0, 0], [0, 0, 1], [0, -1, 0.]]])
-        #     pose[:, 0] = math.rotation_matrix_to_axis_angle(
-        #         amass_rot.matmul(math.axis_angle_to_rotation_matrix(pose[:, 0])))
-            
-        # except:
-        #     failed_to_process.append(f"{subject}_{activity}")
-        #     print(f"Failed to Process: {file}")
-        #     continue
-
-        # pose = tc_poses[pose.shape[0]]
+    print('======================== Processing TotalCapture Dataset ========================')
+    joint_names = ['L_LowArm', 'R_LowArm', 'L_UpLeg', 'R_UpLeg', 'Head', 'Pelvis', 'L_LowLeg', 'R_LowLeg']
     
-        # acc/ori and gt pose do not match in the dataset
-        if acc.shape[0] < pose.shape[0]:
-            pose = pose[:acc.shape[0]]
-        elif acc.shape[0] > pose.shape[0]:
-            acc = acc[:pose.shape[0]]
-            ori = ori[:pose.shape[0]]
-        
-        # convert axis-angle to rotation matrix
-        pose = math.axis_angle_to_rotation_matrix(pose).view(-1, 24, 3, 3)
-
-        assert acc.shape[0] == ori.shape[0] and ori.shape[0] == pose.shape[0]
-        accs.append(acc)    # N, 6, 3
-        oris.append(ori)    # N, 6, 3, 3
-        poses.append(pose)  # N, 24, 3, 3
-
-        processed.append(file)
+    vicon_gt_dir = paths.vicon_gt_dir
+    imu_dir = paths.imu_dir
+    calib_dir = paths.calib_dir
+    AMASS_smpl_dir = paths.AMASS_smpl_dir
+    DIP_smpl_dir = paths.DIP_smpl_dir
     
-    for subject_name in subjects:
-        for motion_name in sorted(os.listdir(os.path.join(paths.raw_totalcapture_official, subject_name))):
-            if (subject_name == 'S5' and motion_name == 'acting3') or motion_name.startswith(".") or (f"{subject_name.lower()}_{motion_name}" in failed_to_process):
-                continue   # no SMPL poses
+    data = {'name': [], 'RIM': [], 'RSB': [], 'RIS': [], 'aS': [], 'wS': [], 'mS': [], 'tran': [], 'AMASS_pose': [], 'DIP_pose': []}
+    n_extracted_imus = len(joint_names)
 
-            f = open(os.path.join(paths.raw_totalcapture_official, subject_name, motion_name, pos_file))
+    for subject_name in ['s1', 's2', 's3', 's4', 's5']:
+        for action_name in sorted(os.listdir(os.path.join(imu_dir, subject_name))):
+            # read imu file
+            f = open(os.path.join(imu_dir, subject_name, action_name), 'r')
             line = f.readline().split('\t')
-            index = torch.tensor([line.index(_) for _ in ['LeftFoot', 'RightFoot', 'Spine']])
-            pos = []
-            while line:
-                line = f.readline()
-                pos.append(torch.tensor([[float(_) for _ in p.split(' ')] for p in line.split('\t')[:-1]]))
-            pos = torch.stack(pos[:-1])[:, index] * inches_to_meters
-            pos[:, :, 0].neg_()
-            pos[:, :, 2].neg_()
-            trans.append(pos[:, 2] - pos[:1, 2])   # N, 3
+            n_sensors, n_frames = int(line[0]), int(line[1])
+            R = torch.zeros(n_frames, n_extracted_imus, 4)
+            a = torch.zeros(n_frames, n_extracted_imus, 3)
+            w = torch.zeros(n_frames, n_extracted_imus, 3)
+            m = torch.zeros(n_frames, n_extracted_imus, 3)
+            for i in range(n_frames):
+                assert int(f.readline()) == i + 1, 'parse imu file error'
+                for _ in range(n_sensors):
+                    line = f.readline().split('\t')
+                    if line[0] in joint_names:
+                        j = joint_names.index(line[0])
+                        R[i, j] = torch.tensor([float(_) for _ in line[1:5]])  # wxyz
+                        a[i, j] = torch.tensor([float(_) for _ in line[5:8]])
+                        w[i, j] = torch.tensor([float(_) for _ in line[8:11]])
+                        m[i, j] = torch.tensor([float(_) for _ in line[11:14]])
+            R = art.math.quaternion_to_rotation_matrix(R).view(-1, n_extracted_imus, 3, 3)
 
-    # downsample
-    trans = [t[::step] for t in trans]
+            # read calibration file
+            name = subject_name + '_' + action_name.split('_')[0].lower()
+            RSB = torch.zeros(n_extracted_imus, 3, 3)
+            RIM = torch.zeros(n_extracted_imus, 3, 3)
+            with open(os.path.join(calib_dir, subject_name, name + '_calib_imu_bone.txt'), 'r') as f:
+                n_sensors = int(f.readline())
+                for _ in range(n_sensors):
+                    line = f.readline().split()
+                    if line[0] in joint_names:
+                        j = joint_names.index(line[0])
+                        q = torch.tensor([float(line[4]), float(line[1]), float(line[2]), float(line[3])])  # wxyz
+                        RSB[j] = art.math.quaternion_to_rotation_matrix(q)[0].t()
+            with open(os.path.join(calib_dir, subject_name, name + '_calib_imu_ref.txt'), 'r') as f:
+                n_sensors = int(f.readline())
+                for _ in range(n_sensors):
+                    line = f.readline().split()
+                    if line[0] in joint_names:
+                        j = joint_names.index(line[0])
+                        q = torch.tensor([float(line[4]), float(line[1]), float(line[2]), float(line[3])])  # wxyz
+                        RIM[j] = art.math.quaternion_to_rotation_matrix(q)[0].t()
+            RSB = RSB.matmul(torch.tensor([[-1, 0, 0], [0, 0, -1], [0, -1, 0.]]))  # change bone frame to SMPL
+            RIM = RIM.matmul(torch.tensor([[-1, 0, 0], [0, 1, 0], [0, 0, -1.]]))   # change global frame to SMPL
+
+            # read root translation
+            tran = []
+            with open(os.path.join(vicon_gt_dir, subject_name.upper(), action_name.split('_')[0].lower(), 'gt_skel_gbl_pos.txt')) as f:
+                idx = f.readline().split('\t').index('Hips')
+                while True:
+                    line = f.readline()
+                    if line == '':
+                        break
+                    t = [float(_) * 0.0254 for _ in line.split('\t')[idx].split(' ')]   # inches_to_meters
+                    tran.append([-t[0], t[1], -t[2]])
+            tran = torch.tensor(tran)
+
+            # read SMPL pose parameters calculated by AMASS
+            f = os.path.join(AMASS_smpl_dir, subject_name, action_name.split('_')[0].lower() + '_poses.npz')
+            AMASS_pose = None
+            if os.path.exists(f):
+                d = np.load(f)
+                AMASS_pose = torch.from_numpy(d['poses'])[:, :72].float()
+                root_rot = art.math.axis_angle_to_rotation_matrix(AMASS_pose[:, :3])
+                root_rot = torch.tensor([[1, 0, 0], [0, 0, 1], [0, -1, 0.]]).matmul(root_rot)  # align global frame
+                root_rot = art.math.rotation_matrix_to_axis_angle(root_rot)
+                AMASS_pose[:, :3] = root_rot
+                AMASS_pose[:, 66:] = 0  # hand
+
+            # read SMPL pose parameters calculated by DIP
+            f = os.path.join(DIP_smpl_dir, name + '.pkl')
+            DIP_pose = None
+            if os.path.exists(f):
+                d = pickle.load(open(f, 'rb'), encoding='latin1')
+                DIP_pose = torch.from_numpy(d['gt']).float()
+
+            # align data
+            n_aligned_frames = min(n_frames, tran.shape[0], AMASS_pose.shape[0] if AMASS_pose is not None else 1e8, DIP_pose.shape[0] if DIP_pose is not None else 1e8)
+            if AMASS_pose is not None:
+                AMASS_pose = AMASS_pose[-n_aligned_frames:]
+            if DIP_pose is not None:
+                DIP_pose = DIP_pose[-n_aligned_frames:]
+            tran = tran[-n_aligned_frames:] - tran[-n_aligned_frames]
+            R = R[-n_aligned_frames:]
+            a = a[-n_aligned_frames:]
+            w = w[-n_aligned_frames:]
+            m = m[-n_aligned_frames:]
+
+            # validate data (for debug purpose)
+            if debug and DIP_pose is not None:
+                model = art.ParametricModel(paths.smpl_file)
+                DIP_pose = art.math.axis_angle_to_rotation_matrix(DIP_pose).view(-1, 24, 3, 3)
+                syn_RMB = model.forward_kinematics_R(DIP_pose)[:, [18, 19, 1, 2, 15, 0, 4, 5]]
+                real_RMB = RIM.transpose(1, 2).matmul(R).matmul(RSB)
+                real_aM = RIM.transpose(1, 2).matmul(R).matmul(a.unsqueeze(-1)).squeeze(-1)
+                print('real-syn imu ori err:', art.math.radian_to_degree(art.math.angle_between(real_RMB, syn_RMB).mean()))
+                print('mean acc in M:', real_aM.mean(dim=(0, 1)))   # (0, +g, 0)
+
+            # save results
+            data['name'].append(name)
+            data['RIM'].append(RIM)
+            data['RSB'].append(RSB)
+            data['RIS'].append(R)
+            data['aS'].append(a)
+            data['wS'].append(w)
+            data['mS'].append(m)
+            data['tran'].append(tran)
+            data['AMASS_pose'].append(AMASS_pose)
+            data['DIP_pose'].append(DIP_pose)
+            print('Finish Processing %s' % name, '(no AMASS pose)' if AMASS_pose is None else '', '(no DIP pose)' if DIP_pose is None else '')
+
+    os.makedirs(paths.eval_dir, exist_ok=True)
+    torch.save(data, paths.eval_dir / 'totalcapture_raw.pt')
+
+def process_totalcapture_from_raw(heights: bool=False):
+    """Preprocess TotalCapture dataset for testing."""
+    r"""
+        totalcapture data.pt
+            data['name'].append(name)
+            data['RIM'].append(RIM)
+            data['RSB'].append(RSB)
+            data['RIS'].append(R)
+            data['aS'].append(a)
+            data['wS'].append(w)
+            data['mS'].append(m)
+            data['tran'].append(tran)
+            data['AMASS_pose'].append(AMASS_pose)
+            data['DIP_pose'].append(DIP_pose)
+    """
     
-    # match trans with poses
-    for i in range(len(accs)):
-        if accs[i].shape[0] < trans[i].shape[0]:
-            trans[i] = trans[i][:accs[i].shape[0]]
-        assert trans[i].shape[0] == accs[i].shape[0]
+    accs, oris, poses, trans, joints = [], [], [], [], []
+    raw_data_path = paths.eval_dir / 'totalcapture_raw.pt'
+    data = torch.load(raw_data_path)
+    
+    RIM = data['RIM']
+    RSB = data['RSB']
+    oris_raw = data['RIS'] # list of tensor in shape [-1,3,3]
+    accs_raw = data['aS'] # list of tensor in shape [-1,3]
+    real_RMB = [RIM[i].transpose(1, 2).matmul(oris_raw[i]).matmul(RSB[i]) for i in range(len(oris_raw))]
+    real_aM = [RIM[i].transpose(1, 2).matmul(oris_raw[i]).matmul((accs_raw[i]).unsqueeze(-1)).squeeze(-1)+torch.tensor([0,-9.8,0]) for i in range(len(accs_raw))]
+    poses_raw = data['DIP_pose']  # list of tensor in shape (-1, 24, 3, 3)
+    trans_raw = data['tran']
+    
+    # calculate joint positions
+    idx = 0
+    for pose, tran in zip(poses_raw, trans_raw):
+        if pose is not None and tran is not None:
+            _, joint = body_model.forward_kinematics(pose, tran=tran)
+            joints.append(joint)
+            accs.append(real_aM[idx])
+            oris.append(real_RMB[idx])
 
-    # remove acceleration bias and add relative height
-    v_accs, v_oris = [], []
-    for iacc, pose, tran in zip(accs, poses, trans):
-        pose = pose.view(-1, 24, 3, 3)
-        grot, joint, vert = body_model.forward_kinematics(pose, tran=tran, calc_mesh=True)
+            poses.append(pose.view(-1, 24, 3, 3))
+            trans.append(tran)
+        idx += 1
+    
+    # print totalcapture length
+    print(f"TotalCapture dataset length: {len(poses)}")
+    
+    # remove acceleration bias
+    print("Removing acceleration bias and add height to the dataset")
+    out_ground, out_heights = [], []
+    for iacc, pose, tran in tqdm(zip(accs, poses, trans)):
+        _, joint, vert = body_model.forward_kinematics(pose, tran=tran, calc_mesh=True)
+        
+        if heights:
+            fc_probs = _foot_ground_probs(joint).clone()
+            ground = _get_ground(joint, fc_probs, pose.shape[0])
+        else:
+            ground = torch.zeros((pose.shape[0], 1))
+            
+        out_ground.append(ground)
+        out_heights.append(_get_heights(vert, ground, vi_mask))
+        
         vacc = _syn_acc(vert[:, vi_mask])
-        rheights.append(_relative_height(vert))
-        
-        ground = _foot_min(joint, fix=False)
-        
-        heights.append(_get_heights(vert, ground).squeeze())
-        
-        v_accs.append(vacc)
-        v_oris.append(grot[:, ji_mask])
-        
         for imu_id in range(6):
             for i in range(3):
                 d = -iacc[:, imu_id, i].mean() + vacc[:, imu_id, i].mean()
                 iacc[:, imu_id, i] += d
-
+    
     data = {
-        'acc': accs,
-        'ori': v_oris,
+        'joint': joints,
         'pose': poses,
         'tran': trans,
-        'rheight': rheights,
-        'heights': heights
+        'acc': accs,
+        'ori': oris,
+        'ground': out_ground,
+        'heights': out_heights
     }
-    
-    data_path = paths.eval_dir / "totalcapture.pt"
+    data_path = paths.eval_dir / 'totalcapture.pt'
     torch.save(data, data_path)
-    print("Preprocessed TotalCapture dataset is saved at:", data_path)
+    print(f"Preprocessed TotalCapture dataset is saved at: {data_path}")
 
-def process_dipimu(split="test"):
+def process_dipimu(split="test", heights: bool=False):
     """Preprocess DIP for finetuning and evaluation."""
-    imu_mask = [7, 8, 9, 10, 0, 2]
+    imu_mask = [7, 8, 9, 10, 0, 2, 11, 12]
 
     test_split = ['s_09', 's_10']
     train_split = ['s_01', 's_02', 's_03', 's_04', 's_05', 's_06', 's_07', 's_08']
     subjects = train_split if split == "train" else test_split
-     
-    # left wrist, right wrist, left thigh, right thigh, head, pelvis
-    vi_mask = torch.tensor([1961, 5424, 876, 4362, 411, 3021])
-    ji_mask = torch.tensor([18, 19, 1, 2, 15, 0])
-
-    # enable downsampling
-    step = max(1, round(60 / TARGET_FPS))
 
     accs, oris, poses, trans, shapes, joints = [], [], [], [], [], []
-    rheights = []
-    heights = []
+    out_ground, out_heights = [], []
 
     for subject_name in subjects:
         for motion_name in os.listdir(os.path.join(paths.raw_dip, subject_name)):
@@ -410,11 +400,6 @@ def process_dipimu(split="test"):
                     acc[:-1].masked_scatter_(torch.isnan(acc[:-1]), acc[1:][torch.isnan(acc[:-1])])
                     ori[:-1].masked_scatter_(torch.isnan(ori[:-1]), ori[1:][torch.isnan(ori[:-1])])
 
-                # enable downsampling
-                acc = acc[6:-6:step].contiguous()
-                ori = ori[6:-6:step].contiguous()
-                pose = pose[6:-6:step].contiguous()
-
                 shape = torch.ones((10))
                 tran = torch.zeros(pose.shape[0], 3) # dip-imu does not contain translations
                 if torch.isnan(acc).sum() == 0 and torch.isnan(ori).sum() == 0 and torch.isnan(pose).sum() == 0:
@@ -425,38 +410,18 @@ def process_dipimu(split="test"):
                     
                     # forward kinematics to get the joint position
                     p = math.axis_angle_to_rotation_matrix(pose).reshape(-1, 24, 3, 3)
-                    grot, joint, vert = body_model.forward_kinematics(p, shape, tran, calc_mesh=True)
+                    _, joint, vert = body_model.forward_kinematics(p, shape, tran, calc_mesh=True)
                     poses.append(p.clone())
                     joints.append(joint)
-                    rheights.append(_relative_height(vert))
                     
-                    # contact_num = 5
-                    # fc_probs = _foot_ground_probs(joint).clone()
-                    # f_min = _foot_min(joint, fix=False)
-                    # cur_ground = f_min[0].item()
-                    
-                    # ground = torch.full_like(f_min, cur_ground)
-                    
-                    # for frame in range(fc_probs.shape[0]):
-                    #     g = f_min[frame].item()
+                    if heights:
+                        fc_probs = _foot_ground_probs(joint).clone()
+                        ground = _get_ground(joint, fc_probs, p.shape[0])
+                    else:
+                        ground = torch.zeros((p.shape[0], 1))
                         
-                    #     if frame >= contact_num:
-                    #         fp_last_n = fc_probs[frame - contact_num:frame]
-                    #     else:
-                    #         fp_last_n = fc_probs[:frame]
-                            
-                    #     ground[frame] = cur_ground
-                        
-                    #     contact = _foot_contact(fp_last_n)
-                    #     residual = abs(g - cur_ground)
-                    #     if contact and residual > 1e-3:
-                    #         ground[frame] = g
-                    #         cur_ground = g
-                    #         if residual > 0.3:
-                    #             print(f"Warning: {subject_name}/{motion_name} has a large residual: {residual}")
-                            
-                    ground = _foot_min(joint, fix=False)
-                    heights.append(_get_heights(vert, ground))
+                    out_ground.append(ground)
+                    out_heights.append(_get_heights(vert, ground, vi_mask))
                     
                 else:
                     print(f"DIP-IMU: {subject_name}/{motion_name} has too much nan! Discard!")
@@ -472,8 +437,8 @@ def process_dipimu(split="test"):
         'tran': trans,
         'acc': accs,
         'ori': oris,
-        'rheight': rheights,
-        'heights': heights
+        'ground': out_ground,
+        'heights': out_heights
     }
     data_path = paths.eval_dir / f"dip_{split}.pt"
     torch.save(data, data_path)
@@ -514,26 +479,20 @@ def process_imuposer(split: str="train"):
                 
                 grot, joint, vert = body_model.forward_kinematics(pose, tran=tran, calc_mesh=True)
                 
-                acc = _syn_acc(vert[:, vi_mask])
+                # acc = _syn_acc(vert[:, vi_mask])
                 # ori = grot[:, ji_mask]
 
                 accs.append(acc)    # N, 5, 3
                 oris.append(ori)    # N, 5, 3, 3
                 poses.append(pose)  # N, 24, 3, 3
                 trans.append(tran)  # N, 3
-                rheights.append(_relative_height(vert))  # N
-                
-                ground = _foot_min(joint, fix=False)
-                heights.append(_get_heights(vert, ground))
 
     print(f"# Data Processed: {len(accs)}")
     data = {
         'acc': accs,
         'ori': oris,
         'pose': poses,
-        'tran': trans,
-        'rheight': rheights,
-        'heights': heights
+        'tran': trans
     }
     data_path = paths.eval_dir / f"imuposer_{split}.pt"
     torch.save(data, data_path)
@@ -545,26 +504,25 @@ def create_directories():
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--dataset", default="amass")
-    parser.add_argument("--debug", default=None)
+    parser.add_argument("--heights", action="store_true")
     args = parser.parse_args()
 
     # create dataset directories
     create_directories()
-
-    # process datasets
+    
+    if args.heights:
+        print("Including heights in the dataset.")
+    
     if args.dataset == "amass":
-        if args.debug is not None:
-            print("Debugging dataset: ", args.debug)
-            process_amass(args.debug)
-        else:
-            process_amass() 
+        process_amass(heights=args.heights)
     elif args.dataset == "totalcapture":
-        process_totalcapture()
+        process_totalcapture_raw(debug=True)
+        process_totalcapture_from_raw(heights=args.heights)
     elif args.dataset == "imuposer":
         process_imuposer(split="train")
         process_imuposer(split="test")
     elif args.dataset == "dip":
-        process_dipimu(split="train")
-        process_dipimu(split="test")
+        process_dipimu(split="train", heights=args.heights)
+        process_dipimu(split="test", heights=args.heights)
     else:
         raise ValueError(f"Dataset {args.dataset} not supported.")

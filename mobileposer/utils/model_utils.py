@@ -1,6 +1,7 @@
 import torch
 
 from mobileposer.config import *
+from mobileposer.config import model_config
 
 
 def load_model(model_path: str):
@@ -8,7 +9,7 @@ def load_model(model_path: str):
     from mobileposer.models import MobilePoserNet
     device = model_config.device
     try: 
-        model = MobilePoserNet().to(device)
+        model = MobilePoserNet(wheights=model_config.wheights).to(device)
         model.load_state_dict(torch.load(model_path, map_location=device))
     except:
         model = MobilePoserNet.load_from_checkpoint(model_path)

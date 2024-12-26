@@ -23,8 +23,8 @@ def load_module_weights(module_name, weight_path):
         return None
 
 
-def get_module_path(module_name, checkpoint, finetune=None):
-    module_path = Path("data/checkpoints") / str(checkpoint)
+def get_module_path(module_name, checkpoint, finetune=None, name=None, combo_id=None):
+    module_path = Path("data/checkpoints") / name / combo_id
     if args.finetune and module_name in ["poser", "joints"]:
         module_path = module_path / f"finetuned_{finetune}" / module_name
     else:
@@ -36,12 +36,14 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--weights", nargs="+", help="List of weight paths.")
     parser.add_argument("--finetune", type=str, default=None)
-    parser.add_argument("--checkpoint", type=int, help="Checkpoint number.", default=1) 
+    parser.add_argument("--checkpoint", type=int, help="Checkpoint number.", default=1)
+    parser.add_argument("--name", type=str, default=None)
+    parser.add_argument("--combo_id", type=str, default=None)
     args = parser.parse_args()
 
     checkpoints = {}
     for module_name in MODULES.keys():
-        module_path = get_module_path(module_name, args.checkpoint, args.finetune)
+        module_path = get_module_path(module_name, args.checkpoint, args.finetune, args.name, args.combo_id)
         best_ckpt = get_best_checkpoint(module_path)
         if best_ckpt:
             checkpoints[module_name] = load_module_weights(module_name, module_path / best_ckpt)
@@ -52,6 +54,6 @@ if __name__ == "__main__":
     # load combined model and save
     model_name = "base_model.pth" if not args.finetune else "model_finetuned.pth"
     model = MobilePoserNet(**checkpoints)
-    model_path = Path("data/checkpoints") / str(args.checkpoint) / model_name
+    model_path = Path("data/checkpoints") / args.name / args.combo_id / model_name
     torch.save(model.state_dict(), model_path)
     print(f"Model written to {model_path}.")

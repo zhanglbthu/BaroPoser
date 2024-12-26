@@ -9,6 +9,7 @@ from torch.optim.lr_scheduler import StepLR
 from mobileposer.articulate.model import ParametricModel
 from mobileposer.models.rnn import RNN
 from mobileposer.config import *
+import mobileposer.articulate as art
 
 
 class Velocity(L.LightningModule):
@@ -17,20 +18,26 @@ class Velocity(L.LightningModule):
     Outputs: Per-Frame Root Velocity. 
     """
 
-    def __init__(self):
+    def __init__(self, finetune: bool=False, imu_num: int=3, height: bool=False, winit=False):
         super().__init__()
         
         # constants
         self.C = model_config
         self.hypers = train_hypers
-        self.bodymodel = ParametricModel(paths.smpl_file, device=self.C.device)
+
+        # input dimensions
+        imu_input_dim = imu_num * 12
+        if height:
+            self.input_dim = self.C.n_output_joints*3 + imu_input_dim + 2
+        else:
+            self.input_dim = self.C.n_output_joints*3 + imu_input_dim
 
         # model definitions
-        self.vel = RNN(self.C.n_output_joints * 3 + self.C.n_imu + 2, 24 * 3, 256, bidirectional=False)  # per-frame velocity of the root joint. 
+        self.vel = RNN(self.input_dim, 24 * 3, 256, bidirectional=False)  # per-frame velocity of the root joint. 
         self.rnn_state = None
 
         # log input and output dimensions
-        print(f"Input dimensions: {self.C.n_output_joints*3 + self.C.n_imu + 2}")
+        print(f"Input dimensions: {self.input_dim}")
         print(f"Output dimensions: {24*3}")
         
         # loss function 
@@ -65,7 +72,7 @@ class Velocity(L.LightningModule):
         target_vel = outputs['vels'].view(joints.shape[0], joints.shape[1], 72)
 
         # add noise to target joints for beter robustness
-        noise = torch.randn(target_joints.size()).to(self.C.device) * 0.025 # gaussian noise with std = 0.025
+        noise = torch.randn(target_joints.size()).to(self.device) * 0.025 # gaussian noise with std = 0.025
         target_joints += noise
         
         # predict root joint velocity
@@ -105,6 +112,9 @@ class Velocity(L.LightningModule):
         inputs, target = batch
         imu_inputs, input_lengths = inputs
         return self(imu_inputs, input_lengths)
+
+    def on_fit_start(self):
+        self.bodymodel = art.model.ParametricModel(paths.smpl_file, device=self.device)
 
     def on_train_epoch_end(self):
         self.epoch_end_callback(self.training_step_loss, loop_type="train")

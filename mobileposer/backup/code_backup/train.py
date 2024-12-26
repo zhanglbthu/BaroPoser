@@ -16,7 +16,6 @@ from typing import List
 from tqdm import tqdm 
 import wandb
 import sys
-from mobileposer.config import *
 
 from mobileposer.constants import MODULES
 from mobileposer.data import PoseDataModule
@@ -26,7 +25,9 @@ from mobileposer.utils.file_utils import (
     get_dir_number, 
     get_best_checkpoint
 )
-from mobileposer.config import paths, train_hypers, finetune_hypers, model_config
+from mobileposer.config import paths, train_hypers, finetune_hypers
+from mobileposer.models import Velocity_new
+
 
 # set precision for Tensor cores
 torch.set_float32_matmul_precision('medium')
@@ -38,6 +39,14 @@ class TrainingManager:
         self.finetune = finetune
         self.fast_dev_run = fast_dev_run
         self.hypers = finetune_hypers if finetune else train_hypers
+
+    def _setup_wandb_logger(self, save_path: Path):
+        wandb_logger = WandbLogger(
+            project=save_path.name, 
+            name=get_datestring(),
+            save_dir=save_path
+        ) 
+        return wandb_logger
 
     def _setup_tensorboard_logger(self, save_path: Path):
         tensorboard_logger = TensorBoardLogger(
@@ -60,19 +69,18 @@ class TrainingManager:
 
     def _setup_trainer(self, module_path: Path):
         print("Module Path: ", module_path.name, module_path)
+        # logger = self._setup_wandb_logger(module_path) 
         logger = self._setup_tensorboard_logger(module_path)
         checkpoint_callback = self._setup_callbacks(module_path)
-        print(self.hypers.device)
         trainer = L.Trainer(
                 fast_dev_run=self.fast_dev_run,
                 min_epochs=self.hypers.num_epochs,
                 max_epochs=self.hypers.num_epochs,
-                devices=self.hypers.device, 
+                devices=[self.hypers.device], 
                 accelerator=self.hypers.accelerator,
                 logger=logger,
                 callbacks=[checkpoint_callback],
-                deterministic=True,
-                strategy="ddp",
+                deterministic=True
                 )
         return trainer
 
@@ -81,13 +89,15 @@ class TrainingManager:
         model.hypers = self.hypers 
 
         # create directory for module
-        module_path = checkpoint_path / combo_id / module_name
+        module_path = checkpoint_path / module_name
         os.makedirs(module_path, exist_ok=True)
         
-        # save config.py to model_path
-        os.system(f"cp config.py {module_path}")
+        if module_name == "joints" or module_name == "poser":
+            concat = True
+        else:
+            concat = False
             
-        datamodule = PoseDataModule(finetune=self.finetune, combo_id=combo_id, wheights=model_config.wheights)
+        datamodule = PoseDataModule(finetune=self.finetune, concat=concat, combo_id=combo_id)
         trainer = self._setup_trainer(module_path)
 
         print()
@@ -103,6 +113,7 @@ class TrainingManager:
             del model
             torch.cuda.empty_cache()
 
+
 def get_checkpoint_path(finetune: str, init_from: str, name: str=None):
     if finetune:
         # finetune from a checkpoint
@@ -114,9 +125,10 @@ def get_checkpoint_path(finetune: str, init_from: str, name: str=None):
     else:
         # make directory for trained models
         if init_from is not None:
-            checkpoint_path = Path(init_from)
+            checkpoint_path = Path(init_from) / name
         else:
-            checkpoint_path = paths.checkpoint / name
+            dir_name = get_dir_number(paths.checkpoint) 
+            checkpoint_path = paths.checkpoint / str(dir_name)
 
     os.makedirs(checkpoint_path, exist_ok=True)
     return Path(checkpoint_path)
@@ -127,8 +139,8 @@ if __name__ == "__main__":
     parser.add_argument("--fast-dev-run", action="store_true")
     parser.add_argument("--finetune", type=str, default=None)
     parser.add_argument("--init-from", nargs="?", default=None, type=str)
-    # parser.add_argument("--combo_id", type=str)
-    # parser.add_argument("--name", type=str)
+    parser.add_argument("--combo_id", type=str)
+    parser.add_argument("--name", type=str)
     args = parser.parse_args()
 
     # set seed for reproducible results
@@ -138,35 +150,31 @@ if __name__ == "__main__":
     paths.checkpoint.mkdir(exist_ok=True)
 
     # initialize training manager
-    checkpoint_path = get_checkpoint_path(args.finetune, args.init_from, model_config.name)
-    
+    checkpoint_path = get_checkpoint_path(args.finetune, args.init_from, args.name)
     training_manager = TrainingManager(
         finetune=args.finetune,
         fast_dev_run=args.fast_dev_run
     )
 
-    # set imu set combo
-    imu_set = amass.combos_mine[model_config.combo_id]
-    imu_num = len(imu_set)
-    
     # train single module
     if args.module:
         if args.module not in MODULES.keys() and args.module != "velocity_new":
             raise ValueError(f"Module {args.module} not found.")
 
-        if args.init_from:
-            model_dir = Path(args.init_from)
+        model_dir = Path(args.init_from)
         
-        module = MODULES[args.module]
-        model = module(imu_num = imu_num, height=model_config.wheights)
+        if args.module != "velocity_new":
+            module = MODULES[args.module]
+            model = module() # init model from scratch
+        else:
+            model = Velocity_new(combo_id=args.combo_id)
 
         if args.finetune: 
             model_path = get_best_checkpoint(model_dir)
             model = module.from_pretrained(model_path=os.path.join(model_dir, model_path)) # load pre-trained model
         
-        training_manager.train_module(model, args.module, checkpoint_path, combo_id=model_config.combo_id)
+        training_manager.train_module(model, args.module, checkpoint_path, combo_id=args.combo_id)
     else:
         # train all modules
         for module_name, module in MODULES.items():
-            model = module(imu_num = imu_num, height=model_config.wheights)
-            training_manager.train_module(model, module_name, checkpoint_path, combo_id=model_config.combo_id)
+            training_manager.train_module(module(), module_name, checkpoint_path, combo_id=args.combo_id)
