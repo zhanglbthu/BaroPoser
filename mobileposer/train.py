@@ -72,7 +72,6 @@ class TrainingManager:
                 logger=logger,
                 callbacks=[checkpoint_callback],
                 deterministic=True,
-                strategy="ddp",
                 )
         return trainer
 

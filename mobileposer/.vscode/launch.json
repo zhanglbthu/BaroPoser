@@ -4,17 +4,27 @@
     // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [       
+
+
+
         {
             "name": "evaluate dip",
             "type": "debugpy",
             "request": "launch",
             "program": "evaluate.py",
             "console": "integratedTerminal",
-            "args": ["--model", "data/checkpoints/mobileposer_origin_60fps/lw_rp_h/base_model.pth",
-                     "--dataset", "dip",
-                     "--name", "origin_60fps",
-                     "--combo_id", "lw_rp_h"],
+            "args": ["--model", "data/checkpoints/60fps_heights/lw_rp_h/base_model.pth",
+                     "--dataset", "dip"],
             "justMyCode": false
+        },
+        {
+            "name": "evaluate debug",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "evaluate.py",
+            "console": "integratedTerminal",
+            "args": ["--model", "data/checkpoints/heights_30fps/lw_rp_h/base_model.pth",
+                     "--dataset", "dip"],
         },
         {
             "name": "process dataset",
@@ -35,6 +45,15 @@
             "args": ["--model", "data/checkpoints/floor/base_model.pth",
                      "--dataset", "imuposer",
                      "--name", "lw_rp_h"],
+            "justMyCode": false
+        },
+        {
+            "name": "resample",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "resample.py",
+            "console": "integratedTerminal",
+            "args": ["--train"],
             "justMyCode": false
         }
     ]

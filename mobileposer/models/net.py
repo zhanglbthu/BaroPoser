@@ -39,10 +39,10 @@ class MobilePoserNet(L.LightningModule):
         self.global_to_local_pose = self.bodymodel.inverse_kinematics_R
 
         # model definitions
-        self.pose = poser if poser else Poser(height=wheights)                                 # pose estimation model
-        self.joints = joints if joints else Joints(height=wheights)                            # joint estimation model
-        self.foot_contact = foot_contact if foot_contact else FootContact(height=wheights)     # foot-ground probability model
-        self.velocity = velocity if velocity else Velocity(height=wheights)                    # joint velocity model
+        self.pose = poser if poser else Poser()                                 # pose estimation model
+        self.joints = joints if joints else Joints(height=wheights)             # joint estimation model
+        self.foot_contact = foot_contact if foot_contact else FootContact()     # foot-ground probability model
+        self.velocity = velocity if velocity else Velocity()                    # joint velocity model
 
         # base joints
         self.j, _ = self.bodymodel.get_zero_pose_joint_and_vertex() # [24, 3]
@@ -100,19 +100,26 @@ class MobilePoserNet(L.LightningModule):
         return pred_pose
 
     def forward(self, batch, input_lengths=None):
+        '''
+        batch: [1, total_frames, 38]
+        '''
         # forward the joint prediction model
-        pred_joints = self.joints(batch, input_lengths)
+        pred_joints = self.joints(batch, input_lengths) # [batch_size, total_frames, 72]
 
         # forward the pose prediction model
-        pose_input = torch.cat((pred_joints, batch), dim=-1)
-        pred_pose = self.pose(pose_input, input_lengths)
+        
+        # select batch[:, :, :self.C.n_imu] as input to the pose model
+        batch = batch[:, :, :self.C.n_imu]
+        
+        pose_input = torch.cat((pred_joints, batch), dim=-1) # [batch_size, total_frames, 110]
+        pred_pose = self.pose(pose_input, input_lengths) # [total_frames, 24, 3, 3]
         
         # global pose to local
         pred_pose = self._reduced_global_to_full(pred_pose)
 
         # forward the foot-ground contact probability model
         tran_input = torch.cat((pred_joints, batch), dim=-1)
-        foot_contact = self.foot_contact(tran_input, input_lengths)
+        foot_contact = self.foot_contact(tran_input, input_lengths) # [batch_size, total_frames, 2]
 
         # foward the foot-joint velocity model
         vel_input = torch.cat((pred_joints, batch), dim=-1)
@@ -199,8 +206,17 @@ class MobilePoserNet(L.LightningModule):
         return self.last_root_pos.clone()
         
     @torch.no_grad()
-    def forward_online(self, data, input_lengths=None, debug=False, tran_nn=False): # data shape: [60]
-        # preprocess data to imu: [total_frames, 60]
+    def forward_joint(self, data):
+        
+        imu = data.repeat(self.num_total_frames, 1) if self.imu is None else torch.cat((self.imu[1:], data.view(1, -1)))   
+        
+        pose, pred_joints, vel, contact = self.forward(imu.unsqueeze(0), [self.num_total_frames])
+        
+        return pred_joints.squeeze(0) 
+    
+    @torch.no_grad()
+    def forward_online(self, data, input_lengths=None, debug=False, pred_joint = None):
+        
         imu = data.repeat(self.num_total_frames, 1) if self.imu is None else torch.cat((self.imu[1:], data.view(1, -1)))
 
         # forward the pose prediction model

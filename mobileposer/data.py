@@ -60,6 +60,7 @@ class PoseDataset(Dataset):
                 self._process_file_data(file_data, data)
             except Exception as e:
                 print(f"Error processing {data_file}: {e}.")
+        
         return data
 
     def _process_file_data(self, file_data, data):
@@ -110,10 +111,13 @@ class PoseDataset(Dataset):
                             [imu_input, pose, joint, tran]):
             data[key].extend(torch.split(value, data_len))
         
-        if not (self.evaluate or self.finetune): # do not finetune translation module
+        if not self.finetune: # do not finetune translation module
             self._process_translation_data(joint, tran, foot, data_len, data)
 
     def _process_translation_data(self, joint, tran, foot, data_len, data):
+        if tran is None or foot is None:
+            return
+        
         root_vel = torch.cat((torch.zeros(1, 3), tran[1:] - tran[:-1]))
         vel = torch.cat((torch.zeros(1, 24, 3), torch.diff(joint, dim=0)))
         vel[:, 0] = root_vel
@@ -132,7 +136,7 @@ class PoseDataset(Dataset):
             return imu, pose, joint, tran
 
         vel = self.data['vel_outputs'][idx].float()
-        contact = self.data['foot_outputs'][idx].float()
+        contact = self.data['foot_outputs'][idx].float() 
 
         return imu, pose, joint, tran, vel, contact
 

@@ -13,6 +13,7 @@ from mobileposer.config import paths, datasets
 from pathlib import Path
 import articulate as art
 from utils.data_utils import _foot_contact, _get_heights, _foot_min, _get_ground
+import sys
 
 # left wrist, right wrist, left thigh, right thigh, head, pelvis, left shank, right shank
 vi_mask = torch.tensor([1961, 5424, 876, 4362, 411, 3021, 1176, 4662])
@@ -52,6 +53,9 @@ def process_amass(dataset=None, heights: bool=False):
     
     for ds_name in datasets.amass_datasets:
         # skip processed 
+        if dataset is not None and dataset != ds_name:
+            continue
+        
         if f"{ds_name}.pt" in processed:
             continue
 
@@ -60,7 +64,9 @@ def process_amass(dataset=None, heights: bool=False):
         print("\rReading", ds_name)
 
         for npz_fname in tqdm(sorted(glob.glob(os.path.join(paths.raw_amass, ds_name, "*/*_poses.npz")))):
-            
+            if npz_fname.split('/')[-2] != '36':
+                continue
+
             try: cdata = np.load(npz_fname)
             except: continue
 
@@ -75,7 +81,7 @@ def process_amass(dataset=None, heights: bool=False):
             data_trans.extend(cdata['trans'][::step].astype(np.float32))
             data_beta.append(cdata['betas'][:10])
             length.append(cdata['poses'][::step].shape[0])
-
+        
         if len(data_pose) == 0:
             print(f"AMASS dataset, {ds_name} not supported")
             continue
@@ -108,23 +114,6 @@ def process_amass(dataset=None, heights: bool=False):
                 _, joint = body_model.forward_kinematics(p, shape[i], tran[b:b + l], calc_mesh=False)
                 fc_probs = _foot_ground_probs(joint).clone()
                 ground = _get_ground(joint, fc_probs, l)
-                # f_min = _foot_min(joint)
-                # cur_ground = f_min[0].item()
-                # ground = torch.full_like(f_min, cur_ground)
-                
-                # for frame in range(1, l+1):
-                #     g = f_min[frame - 1]
-                #     if frame >= contact_num:
-                #         fp_last_n = fc_probs[frame - contact_num: frame]
-                #     else:
-                #         fp_last_n = fc_probs[:frame]
-                    
-                #     ground[frame-1] = cur_ground
-                #     contact = _foot_contact(fp_last_n)
-                #     residual = abs(g - cur_ground)
-                #     if contact and residual > 1e-3:
-                #         ground[frame-1] = g
-                #         cur_ground = g
             else:
                 ground = torch.zeros((l, 1))
             
@@ -155,7 +144,9 @@ def process_amass(dataset=None, heights: bool=False):
             'heights': out_heights
         }
         if dataset:
-            data_path = paths.processed_datasets / "debug" / f"{ds_name}.pt"
+            data_path = paths.processed_datasets / "eval" / f"{ds_name}.pt"
+            os.makedirs(data_path.parent, exist_ok=True)
+            
         else:
             data_path = paths.processed_datasets / f"{ds_name}.pt"
         torch.save(data, data_path)
@@ -415,8 +406,7 @@ def process_dipimu(split="test", heights: bool=False):
                     joints.append(joint)
                     
                     if heights:
-                        fc_probs = _foot_ground_probs(joint).clone()
-                        ground = _get_ground(joint, fc_probs, p.shape[0])
+                        ground = _foot_min(joint)
                     else:
                         ground = torch.zeros((p.shape[0], 1))
                         
@@ -440,7 +430,7 @@ def process_dipimu(split="test", heights: bool=False):
         'ground': out_ground,
         'heights': out_heights
     }
-    data_path = paths.eval_dir / f"dip_{split}.pt"
+    data_path = paths.processed_datasets / 'eval' / f"dip_{split}.pt"
     torch.save(data, data_path)
     print(f"Preprocessed DIP-IMU dataset is saved at: {data_path}")
 
@@ -454,6 +444,7 @@ def process_imuposer(split: str="train"):
     accs, oris, poses, trans = [], [], [], []
     rheights = []
     heights = []
+    grounds = []
     
     for pid_path in sorted(paths.raw_imuposer.iterdir()):
         if pid_path.name not in subjects:
@@ -479,6 +470,8 @@ def process_imuposer(split: str="train"):
                 
                 grot, joint, vert = body_model.forward_kinematics(pose, tran=tran, calc_mesh=True)
                 
+                ground = _foot_min(joint)
+                
                 # acc = _syn_acc(vert[:, vi_mask])
                 # ori = grot[:, ji_mask]
 
@@ -486,13 +479,17 @@ def process_imuposer(split: str="train"):
                 oris.append(ori)    # N, 5, 3, 3
                 poses.append(pose)  # N, 24, 3, 3
                 trans.append(tran)  # N, 3
+                grounds.append(ground) # N, 1
+                heights.append(_get_heights(vert, ground, vi_mask))  # N, 2
 
     print(f"# Data Processed: {len(accs)}")
     data = {
         'acc': accs,
         'ori': oris,
         'pose': poses,
-        'tran': trans
+        'tran': trans,
+        'ground': grounds,
+        'heights': heights
     }
     data_path = paths.eval_dir / f"imuposer_{split}.pt"
     torch.save(data, data_path)
@@ -524,5 +521,7 @@ if __name__ == "__main__":
     elif args.dataset == "dip":
         process_dipimu(split="train", heights=args.heights)
         process_dipimu(split="test", heights=args.heights)
+    elif args.dataset in datasets.amass_datasets:
+        process_amass(dataset=args.dataset, heights=args.heights)
     else:
         raise ValueError(f"Dataset {args.dataset} not supported.")

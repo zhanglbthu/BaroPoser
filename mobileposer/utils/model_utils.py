@@ -8,6 +8,7 @@ def load_model(model_path: str):
     """Load MobilePoser model."""
     from mobileposer.models import MobilePoserNet
     device = model_config.device
+    
     try: 
         model = MobilePoserNet(wheights=model_config.wheights).to(device)
         model.load_state_dict(torch.load(model_path, map_location=device))

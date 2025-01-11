@@ -17,10 +17,14 @@ from mobileposer.utils.file_utils import (
     get_best_checkpoint
 )
 from mobileposer.config import model_config
+from process import _foot_ground_probs
+from mobileposer.articulate.model import ParametricModel
+
+body_model = ParametricModel(paths.smpl_file)
 
 class PoseEvaluator:
     def __init__(self):
-        self._eval_fn = art.FullMotionEvaluator(paths.smpl_file, joint_mask=torch.tensor([2, 5, 16, 20]), fps=datasets.fps)
+        self._eval_fn = art.FullMotionEvaluator(paths.smpl_file, joint_mask=torch.tensor([1, 2, 16, 17]), fps=datasets.fps)
 
     def eval(self, pose_p, pose_t, joint_p=None, tran_p=None, tran_t=None):
         pose_p = pose_p.clone().view(-1, 24, 3, 3)
@@ -71,6 +75,18 @@ class PoseEvaluator:
         print(" | ".join(output_parts), file=file)
         # 如果需要在末尾换行，print 本身就会换行，无需额外操作
 
+def evaluate_joint(joint_t, joint_p):
+    joint_t = joint_t.clone().view(-1, 24, 3)
+    joint_p = joint_p.clone().view(-1, 24, 3)
+    
+    # align root joint
+    offset_from_p2t = joint_t[:, 0] - joint_p[:, 0]
+    joint_p += offset_from_p2t.unsqueeze(1)
+    
+    je = (joint_t - joint_p).norm(dim=2)
+    
+    return je.mean()
+
 @torch.no_grad()
 def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluate_tran=False,
                   save_dir=None, tran_nn=False):
@@ -78,8 +94,8 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
     device = model_config.device
 
     # load data
-    xs, ys = zip(*[(imu.to(device), (pose.to(device), tran)) for imu, pose, joint, tran in dataset])
-    joints_t = [joint.to(device) for _, _, joint, _ in dataset]
+    xs, ys, js = zip(*[(imu.to(device), (pose.to(device), tran), (joint.to(device))) for imu, pose, joint, tran in dataset])
+    # joints_t, contacts_t = zip(*[(joint.to(device), contact.to(device)) for _, _, joint, _, _, contact in dataset])
 
     # setup Pose Evaluator
     evaluator = PoseEvaluator()
@@ -90,18 +106,19 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
     
     model.eval()
     with torch.no_grad():
-        for idx, (x, y) in enumerate(tqdm.tqdm(zip(xs, ys), total=len(xs))):
+        for idx, (x, y, j) in enumerate(tqdm.tqdm(zip(xs, ys, js), total=len(xs))):
             # x: [N, 60], y: ([N, 144], [N, 3])
-            model.reset()
-            pose_p_offline, joint_p_offline, tran_p_offline, _ = model.forward_offline(x.unsqueeze(0), [x.shape[0]])
-            pose_t, tran_t = y
             
-            # vel_t, contact_t = zs[idx]
+            model.reset()
+
+            pose_t, tran_t = y
             
             pose_t = art.math.r6d_to_rotation_matrix(pose_t)
 
             if getenv("ONLINE"):
-                online_results = [model.forward_online(f, debug=True, tran_nn=tran_nn) for f in torch.cat((x, x[-1].repeat(num_future_frame, 1)))]
+                
+                online_results = [model.forward_online(f, debug=True) for f in torch.cat((x, x[-1].repeat(num_future_frame, 1)))]
+                
                 pose_p_online, joint_p_online, tran_p_online, contact_p_online = [torch.stack(_)[num_future_frame:] for _ in zip(*online_results)]
 
             if evaluate_tran:
@@ -132,20 +149,19 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
                         errs.append((vel_t - vel_p).norm() / (move_distance_t[end] - move_distance_t[start]) * window_size)
                     if len(errs) > 0:
                         tran_errors[window_size].append(sum(errs) / len(errs))
-
-            offline_errs.append(evaluator.eval(pose_p_offline, pose_t, tran_p=tran_p_offline, tran_t=tran_t))
+                        
             if getenv("ONLINE"):
                 online_errs.append(evaluator.eval(pose_p_online, pose_t, tran_p=tran_p_online, tran_t=tran_t))
             
-            # save pose_t, pose_p_online, tran_t, tran_p_online to one .pt file
-            joint_t = joints_t[idx]
             if save_dir:
                 torch.save({'pose_t': pose_t, 
                             'pose_p': pose_p_online, 
                             'tran_t': tran_t, 
                             'tran_p': tran_p_online,
-                            'joint_t': joint_t,
-                            'joint_p': joint_p_online},
+                            # 'joint_t': joint_t,
+                            'joint_p': joint_p_online,
+                            # 'contact_t': contact_t,
+                            'contact_p': contact_p_online},
                            save_dir / f"{idx}.pt")
 
     if getenv("ONLINE"):
@@ -175,7 +191,7 @@ if __name__ == '__main__':
     # record combo
     print(f"combo: {amass.combos}")
 
-    # load model 
+    # load model
     model = load_model(args.model)
     
     fold = 'test'
@@ -183,9 +199,10 @@ if __name__ == '__main__':
     dataset = PoseDataset(fold=fold, evaluate=args.dataset, combo_id=args.combo_id, 
                           wheights=model_config.wheights)
     
-    save_dir = Path('data') / 'eval' / args.name / args.combo_id / args.dataset
+    save_dir = Path('data') / 'eval' / model_config.name / args.combo_id / args.dataset
     save_dir.mkdir(parents=True, exist_ok=True)
     
     # evaluate pose
     print(f"Starting evaluation: {args.dataset.capitalize()}")
-    evaluate_pose(model, dataset, evaluate_tran=True, save_dir=save_dir)
+    # evaluate_pose(model, dataset, evaluate_tran=True, save_dir=save_dir)
+    evaluate_pose(model=model, dataset=dataset, save_dir=save_dir, evaluate_tran=True)

@@ -6,9 +6,9 @@ class train_hypers:
     """Hyperparameters for training."""
     batch_size = 256
     num_workers = 8
-    num_epochs = 60
+    num_epochs = 200
     accelerator = "gpu"
-    device = 8
+    device = 1
     lr = 1e-3
 
 
@@ -67,12 +67,12 @@ class model_config:
     future_frames = 5
     total_frames = past_frames + future_frames
 
-    wheights = True
+    wheights = False
     winit = False
     combo_id = 'lw_rp_h'
-    name = '60fps_heights'
+    name = 'origin_30fps'
 
-class amass:
+class amass:    
     """AMASS dataset information."""
     # device-location combinationsa
     combos = {
@@ -114,7 +114,7 @@ class amass:
 class datasets:
     """Dataset information."""
     # FPS of data
-    fps = 60
+    fps = 30
 
     # DIP dataset
     dip_test = "dip_test.pt"
@@ -140,7 +140,8 @@ class datasets:
     test_datasets = {
         'dip': dip_test,
         'totalcapture': totalcapture,
-        'imuposer': imuposer_test
+        'imuposer': imuposer_test,
+        'cmu': cmu
     }
 
     # Finetune datasets
@@ -153,7 +154,7 @@ class datasets:
     amass_datasets = ['ACCAD', 'BioMotionLab_NTroje', 'BMLhandball', 'BMLmovi', 'CMU', 
                       'DanceDB', 'DFaust_67', 'EKUT', 'Eyes_Japan_Dataset', 'HUMAN4D',
                       'HumanEva', 'KIT', 'MPI_HDM05', 'MPI_Limits', 'MPI_mosh', 'SFU',
-                      'SSM_synced', 'TCD_handMocap', 'TotalCapture', 'Transitions_mocap', 'dip_train']
+                      'SSM_synced', 'TCD_handMocap', 'TotalCapture', 'Transitions_mocap']
     
     # amass_datasets = ['TotalCapture']
 

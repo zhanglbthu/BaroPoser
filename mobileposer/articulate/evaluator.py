@@ -340,4 +340,4 @@ class FullMotionEvaluator(BasePoseEvaluator):
                              [te.mean(),   te.std(dim=0).mean()],
                              [mje.mean(),  mje.std(dim=0).mean()],
                              [mlae.mean(), mlae.std(dim=0).mean()],
-                             [mgae.mean(), mgae.std(dim=0).mean()]])
+                             [mgae.mean(), mgae.std(dim=0).mean()]]) #SIP

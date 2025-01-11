@@ -64,11 +64,6 @@ def _get_heights(vert, ground):
     
     # return [N, 2]
     return torch.stack((pocket_height, wrist_height), dim=1)
-    
-    # root_height = vert[:, vi_mask[5], 1].unsqueeze(1) - ground
-    # wrist_height = vert[:, vi_mask[0], 1].unsqueeze(1) - ground
-    
-    # return torch.stack((root_height, wrist_height), dim=1)
 
 def _foot_contact(fp_list):
     """
