@@ -468,6 +468,13 @@ def process_imuposer(split: str="train"):
                 # ensure sizes are consistent
                 assert tran.shape[0] == pose.shape[0]
                 
+                # downsample
+                step = 2
+                acc = acc[::step]
+                ori = ori[::step]
+                pose = pose[::step]
+                tran = tran[::step]
+                
                 grot, joint, vert = body_model.forward_kinematics(pose, tran=tran, calc_mesh=True)
                 
                 ground = _foot_min(joint)

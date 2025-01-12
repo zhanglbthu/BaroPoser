@@ -1,0 +1,16 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+
+        {
+            "name": "evaluate dip",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "mobileposer/evaluate.py",
+            "console": "integratedTerminal",
+            "args": ["--model", "mobileposer/data/checkpoints/official/weights.pth",
+                     "--dataset", "dip"],
+            "justMyCode": false
+        }
+    ]
+}

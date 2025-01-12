@@ -18,7 +18,7 @@ import sys
 target_fps = 30
 
 def resample(tensor, target_fps):
-    indices = torch.arange(0, tensor.shape[0], 60 / target_fps)
+    indices = torch.arange(0, tensor.shape[0], 25 / target_fps)
     
     start_indices = torch.floor(indices).long()
     end_indices = torch.ceil(indices).long()
