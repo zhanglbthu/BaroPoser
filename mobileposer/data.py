@@ -14,6 +14,9 @@ from mobileposer.config import *
 from mobileposer.utils import *
 from mobileposer.helpers import *
 
+from utils.data_utils import *
+from config import amass
+
 
 class PoseDataset(Dataset):
     def __init__(self, fold: str='train', evaluate: str=None, finetune: str=None, 
@@ -55,11 +58,8 @@ class PoseDataset(Dataset):
         
         data = {key: [] for key in ['imu_inputs', 'pose_outputs', 'joint_outputs', 'tran_outputs', 'vel_outputs', 'foot_outputs']}
         for data_file in tqdm(data_files):
-            try:
-                file_data = torch.load(data_folder / data_file)
-                self._process_file_data(file_data, data)
-            except Exception as e:
-                print(f"Error processing {data_file}: {e}.")
+            file_data = torch.load(data_folder / data_file)
+            self._process_file_data(file_data, data)
         
         return data
 
@@ -98,8 +98,19 @@ class PoseDataset(Dataset):
         
         combo_acc = acc[:, c]
         combo_ori = ori[:, c]
+        
+        # joint_normalized = normalize_joint(joint, combo_ori[:, -1]) 
 
         imu_input = torch.cat([combo_acc.flatten(1), combo_ori.flatten(1)], dim=1) # [[N, 9], [N, 27]] => [N, 36]
+        # imu_input = normalize_and_concat(combo_acc, combo_ori) # [[N, 9], [N, 27]] => [N, 36]
+        
+        # root_rot = pose[:, 0]
+        # joint_normalized = normalize_joint(joint, root_rot)
+        
+        # acc, ori = acc[:, :6], ori[:, :6]
+        # acc, ori = normalize_and_concat(acc, ori)
+        # combo_acc, combo_ori = acc[:, c], ori[:, c]
+        # imu_input = torch.cat([combo_acc.flatten(1), combo_ori.flatten(1)], dim=1) # [[N, 9], [N, 27]] => [N, 36]
         
         if self.wheights:
             height = height.view(-1, 2)

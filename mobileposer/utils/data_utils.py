@@ -1,6 +1,7 @@
 import math
 import numpy as np
 import torch
+from config import amass
 
 def smooth_avg(acc=None, s=3):
     nan_tensor = (torch.zeros((s // 2, acc.shape[1], acc.shape[2])) * torch.nan)
@@ -67,3 +68,23 @@ def _get_ground(joint, fc_probs, length, contact_num=5):
             cur_ground = g
             
     return ground
+
+def normalize_and_concat(glb_acc, glb_rot):
+    imu_num = glb_acc.shape[1]
+    j_idx = imu_num - 1
+    
+    glb_acc = glb_acc.view(-1, imu_num, 3)
+    glb_rot = glb_rot.view(-1, imu_num, 3, 3)
+    acc = torch.cat((glb_acc[:, :j_idx] - glb_acc[:, j_idx:], glb_acc[:, j_idx:]), dim=1).bmm(glb_rot[:, -1])
+    ori = torch.cat((glb_rot[:, j_idx:].transpose(2, 3).matmul(glb_rot[:, :j_idx]), glb_rot[:, j_idx:]), dim=1)
+    
+    return acc, ori
+
+def normalize_joint(joint, norm_rot):
+    
+    norm_rot = norm_rot.view(-1, 3, 3)
+    j = (joint - joint[:, 15].unsqueeze(1)).bmm(norm_rot)
+
+    j = j[:, amass.normalize_joints].flatten(1)
+    
+    return j

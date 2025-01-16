@@ -15,7 +15,6 @@ class Joints(L.LightningModule):
     Inputs: N IMUs.
     Outputs: 24 Joint positions. 
     """
-
     def __init__(self, finetune: bool=False, imu_num: int=3, height: bool=False, winit=False):
         super().__init__()
 

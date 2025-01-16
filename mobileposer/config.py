@@ -70,7 +70,7 @@ class model_config:
     wheights = False
     winit = False
     combo_id = 'lw_rp_h'
-    name = 'origin_30fps'
+    name = 'origin_normalize_root'
 
 class amass:    
     """AMASS dataset information."""
@@ -109,6 +109,9 @@ class amass:
     pred_joints_set = [*range(24)]
     joint_sets = [18, 19, 1, 2, 15, 0]
     ignored_joints = list(set(pred_joints_set) - set(joint_sets))
+    
+    norm_joint = 0
+    normalize_joints = [i for i in range(24) if i != 0]
 
 
 class datasets:
