@@ -70,7 +70,7 @@ class model_config:
     wheights = False
     winit = False
     combo_id = 'lw_rp_h'
-    name = 'origin_normalize_root'
+    name = 'origin_winit_birnn'
 
 class amass:    
     """AMASS dataset information."""

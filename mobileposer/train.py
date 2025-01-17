@@ -86,7 +86,10 @@ class TrainingManager:
         # save config.py to model_path
         os.system(f"cp config.py {module_path}")
             
-        datamodule = PoseDataModule(finetune=self.finetune, combo_id=combo_id, wheights=model_config.wheights)
+        datamodule = PoseDataModule(finetune=self.finetune, combo_id=combo_id, 
+                                    wheights=model_config.wheights,
+                                    winit=True)
+        
         trainer = self._setup_trainer(module_path)
 
         print()

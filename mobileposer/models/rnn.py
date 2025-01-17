@@ -35,8 +35,8 @@ class RNNDataset(torch.utils.data.Dataset):
 
         Args
         -----
-        :param data: A list that contains sequences(tensors) in shape [num_frames, input_size].
-        :param label: A list that contains sequences(tensors) in shape [num_frames, output_size].
+        :param data: A list that contains sequences(tensors) in shape [num_frames, n_input].
+        :param label: A list that contains sequences(tensors) in shape [num_frames, n_output].
         :param split_size: If positive, data and label will be split to list of small sequences.
         :param augment_fn: If not None, data item will be augmented in __getitem__.
         :param device: The loaded data is finally copied to the device. If None, the device of data[0] is used.
@@ -98,7 +98,7 @@ class RNN(torch.nn.Module):
     """
     def __init__(self, n_input, n_output, n_hidden, n_rnn_layer=2, bidirectional=True, dropout=0.4):
         super(RNN, self).__init__()
-        self.rnn = nn.LSTM(input_size=n_hidden, hidden_size=n_hidden, num_layers=n_rnn_layer, bidirectional=bidirectional)
+        self.rnn = nn.LSTM(n_hidden, n_hidden, num_layers=n_rnn_layer, bidirectional=bidirectional)
         self.linear1 = nn.Linear(in_features=n_input, out_features=n_hidden)
         self.linear2 = nn.Linear(in_features=n_hidden * (2 if bidirectional else 1), out_features=n_output)
         self.dropout = nn.Dropout(p=dropout)
@@ -122,54 +122,56 @@ class RNNWithInit(RNN):
     r"""
     RNN with the initial hidden states regressed from the first output.
     """
-    def __init__(self, input_size: int, output_size: int, hidden_size: int, num_rnn_layer: int, init_size: int=None,
-                 bidirectional=False, input_linear=True, same_sequence_length=False, dropout=0., layer_norm=False,
+    def __init__(self, n_input: int, n_output: int, n_hidden: int, n_rnn_layer: int, init_size: int=None,
+                 bidirectional=False, dropout=0., layer_norm=False,
                  rnn_type='lstm', load_weight_file: str = None):
         r"""
         Init an RNNWithInit net.
         
-        :param input_size: Input size.
-        :param output_size: Output size.
-        :param hidden_size: Hidden size for RNN.
-        :param num_rnn_layer: Number of RNN layers.
+        :param n_input: Input size.
+        :param n_output: Output size.
+        :param n_hidden: Hidden size for RNN.
+        :param n_rnn_layer: Number of RNN layers.
         :param init_size: Init net size. Default output size.
         :param rnn_type: Select from 'rnn', 'lstm', 'lnlstm', 'gru'.
         :param bidirectional: Whether if the RNN is bidirectional.
-        :param input_linear: Whether to apply a Linear layer (input_size, hidden_size) to the input.
+        :param input_linear: Whether to apply a Linear layer (n_input, n_hidden) to the input.
         :param same_sequence_length: Whether are the input sequence lengths the same.
         :param dropout: Dropout after the input linear layer and in the rnn.
         :param layer_norm: Whether to apply layer norm to h and c.
         :param load_weight_file: If not None and exists, weights will be loaded.
         """
         assert rnn_type.upper() == 'LSTM' or rnn_type.upper() == 'LNLSTM' and bidirectional is False
-        super().__init__(input_size, output_size, hidden_size, num_rnn_layer, rnn_type, bidirectional, input_linear, same_sequence_length, dropout)
-        self.num_layers = num_rnn_layer
+        super().__init__(n_input, n_output, n_hidden, n_rnn_layer, bidirectional, dropout)
+        self.num_layers = n_rnn_layer
         self.bidirectional = bidirectional
-        self.hidden_size = hidden_size
+        self.n_hidden = n_hidden
 
         self.init_net = torch.nn.Sequential(
-            torch.nn.Linear(init_size or output_size, hidden_size),
+            torch.nn.Linear(init_size or n_output, n_hidden),
             torch.nn.ReLU(),
-            torch.nn.Linear(hidden_size, hidden_size * num_rnn_layer),
+            torch.nn.Linear(n_hidden, n_hidden * n_rnn_layer),
             torch.nn.ReLU(),
-            torch.nn.Linear(hidden_size * num_rnn_layer, 2 * (2 if bidirectional else 1) * num_rnn_layer * hidden_size),
-            torch.nn.LayerNorm(2 * (2 if bidirectional else 1) * num_rnn_layer * hidden_size) if layer_norm else torch.nn.Identity()
+            torch.nn.Linear(n_hidden * n_rnn_layer, 2 * (2 if bidirectional else 1) * n_rnn_layer * n_hidden),
+            torch.nn.LayerNorm(2 * (2 if bidirectional else 1) * n_rnn_layer * n_hidden) if layer_norm else torch.nn.Identity()
         )
 
         if load_weight_file:
             self.load_state_dict(torch.load(load_weight_file, map_location=torch.device('cpu')))
             self.eval()
 
-    def forward(self, x, _=None):
+    def forward(self, x, seq_lengths=None):
         r"""
         Forward.
 
         :param x: A list in length [batch_size] which contains 2-tuple
-                  (Tensor[num_frames, input_size], Tensor[output_size]).
+                  (Tensor[num_frames, n_input], Tensor[n_output]).
         :param _: Not used.
-        :return: A list in length [batch_size] which contains tensors in shape [num_frames, output_size].
+        :return: A list in length [batch_size] which contains tensors in shape [num_frames, n_output].
         """
-        x, x_init = list(zip(*x))
-        nd, nh = self.num_layers * (2 if self.bidirectional else 1), self.hidden_size
-        h, c = self.init_net(torch.stack(x_init)).view(-1, 2, nd, nh).permute(1, 2, 0, 3)
-        return super(RNNWithInit, self).forward(x, (h, c))
+        # x, x_init = list(zip(*x))
+        x, x_init = x
+        nd, nh = self.num_layers * (2 if self.bidirectional else 1), self.n_hidden
+        # h, c = self.init_net(torch.stack(x_init)).view(-1, 2, nd, nh).permute(1, 2, 0, 3)
+        h, c = self.init_net(x_init).view(-1, 2, nd, nh).permute(1, 2, 0, 3)
+        return super(RNNWithInit, self).forward(x, h=(h, c), seq_lengths=seq_lengths)

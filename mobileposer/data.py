@@ -20,7 +20,7 @@ from config import amass
 
 class PoseDataset(Dataset):
     def __init__(self, fold: str='train', evaluate: str=None, finetune: str=None, 
-                 combo_id: str=None, wheights: bool=False):
+                 combo_id: str=None, wheights: bool=False, winit: bool=False):
         super().__init__()
 
         self.fold = fold
@@ -31,6 +31,7 @@ class PoseDataset(Dataset):
 
         self.imu_set = amass.combos_mine[combo_id] if combo_id else None
         self.wheights = wheights
+        self.winit = winit
         self.data = self._prepare_dataset()
 
     def _get_data_files(self, data_folder):
@@ -146,7 +147,7 @@ class PoseDataset(Dataset):
         if self.evaluate or self.finetune:
             return imu, pose, joint, tran
 
-        vel = self.data['vel_outputs'][idx].float()
+        vel = self.data['vel_outputs'][idx].float() 
         contact = self.data['foot_outputs'][idx].float() 
 
         return imu, pose, joint, tran, vel, contact
@@ -185,21 +186,27 @@ def pad_seq(batch):
 
 class PoseDataModule(L.LightningDataModule):
     def __init__(self, finetune: str = None, combo_id: str = None, 
-                 wheights: bool = False):
+                 wheights: bool = False,
+                 winit: bool = False):
+        
         super().__init__()
         self.finetune = finetune
         self.combo_id = combo_id
         self.wheights = wheights
+        self.winit = winit
         self.hypers = finetune_hypers if self.finetune else train_hypers
 
     def setup(self, stage: str):
         if stage == 'fit':
             dataset = PoseDataset(fold='train', finetune=self.finetune, 
                                   combo_id=self.combo_id, 
-                                  wheights=self.wheights)
+                                  wheights=self.wheights,
+                                  winit=self.winit)
+            
             train_size = int(0.9 * len(dataset))
             val_size = len(dataset) - train_size
             self.train_dataset, self.val_dataset = random_split(dataset, [train_size, val_size])
+            
         elif stage == 'test':
             self.test_dataset = PoseDataset(fold='test', finetune=self.finetune, 
                                             combo_id=self.combo_id,

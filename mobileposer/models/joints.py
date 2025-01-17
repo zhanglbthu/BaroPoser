@@ -7,7 +7,7 @@ import numpy as np
 
 from mobileposer.config import *
 import mobileposer.articulate as art
-from mobileposer.models.rnn import RNN
+from mobileposer.models.rnn import RNN, RNNWithInit
 
 
 class Joints(L.LightningModule):
@@ -29,7 +29,14 @@ class Joints(L.LightningModule):
 
         # model definitions
         self.bodymodel = art.model.ParametricModel(paths.smpl_file, device=self.device)
-        self.joints = RNN(self.input_dim, 24 * 3, 256) # joint estimation model 
+        
+        self.winit = winit
+
+        if self.winit:
+            self.joints = RNNWithInit(n_input=self.input_dim, n_output=24 * 3, n_hidden=512,
+                                    n_rnn_layer=2, dropout=0.4) # joint estimation model with init
+        else:
+            self.joints = RNN(self.input_dim, 24 * 3, 256)
         
         # log input and output dimensions
         print(f"Input dimensions: {self.input_dim}")
@@ -59,15 +66,27 @@ class Joints(L.LightningModule):
         return joints
 
     def shared_step(self, batch):
-        # unpack data
+        '''
+        inputs:
+            0: [batch_size, seq_len, input_dim] 
+            1: [batch_size] (input lengths)
+        outputs:
+            0: 'poses', 'joints', 'trans', 'foot_contacts', 'vels'
+            1: lengths of each output 
+        '''
         inputs, outputs = batch
+        
         imu_inputs, input_lengths = inputs
         outputs, _ = outputs
 
         # target joints
-        joints = outputs['joints']
+        joints = outputs['joints'] # [batch_size, seq_len, 24, 3]
+        
         target_joints = joints.view(joints.shape[0], joints.shape[1], -1)
 
+        if self.winit:
+            imu_inputs = (imu_inputs, target_joints[:, 0])
+        
         # predicted joints
         pred_joints = self(imu_inputs, input_lengths)
 
