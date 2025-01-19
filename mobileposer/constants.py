@@ -1,13 +1,17 @@
 import os
 
-from mobileposer.models import MobilePoserNet, Poser, Joints, FootContact, Velocity
+# from mobileposer.models import MobilePoserNet, Poser, Joints, FootContact, Velocity
+from mobileposer.models_new.joints import Joints
+from mobileposer.models_new.poser import Poser
+from mobileposer.models_new.velocity import Velocity
 
 # List of available modules
 MODULES = {
     'joints': Joints, 
     'poser': Poser,
-    'foot_contact': FootContact,
     'velocity': Velocity,
+    # 'foot_contact': FootContact,
+    # 'velocity': Velocity,
 }
 
 # Calibration constants

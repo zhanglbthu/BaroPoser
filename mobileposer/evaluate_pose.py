@@ -88,8 +88,7 @@ def evaluate_joint(joint_t, joint_p):
     return je.mean()
 
 @torch.no_grad()
-def evaluate_pose(model: PoseNet, dataset, num_past_frame=40, num_future_frame=5,
-                  save_dir=None):
+def evaluate_pose(model: PoseNet, dataset, save_dir=None):
     # specify device
     device = model_config.device
 

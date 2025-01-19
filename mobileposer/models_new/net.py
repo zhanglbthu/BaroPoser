@@ -15,6 +15,7 @@ from mobileposer.helpers import *
 import mobileposer.articulate as art
 from mobileposer.models_new.poser import Poser
 from mobileposer.models_new.joints import Joints
+from mobileposer.models_new.velocity import Velocity
 
 class PoseNet(L.LightningModule):
     """
@@ -22,9 +23,8 @@ class PoseNet(L.LightningModule):
     Outputs: SMPL Pose Parameters (as 6D Rotations) and Translation. 
     """
 
-    def __init__(self, poser: Poser=None, joints: Joints=None, 
-                 finetune: bool=False,
-                 wheights: bool=False):
+    def __init__(self, poser: Poser=None, joints: Joints=None, velocity: Velocity=None,
+                 finetune: bool=False, wheights: bool=False):
         super().__init__()
 
         # constants
@@ -37,8 +37,9 @@ class PoseNet(L.LightningModule):
         self.global_to_local_pose = self.bodymodel.inverse_kinematics_R
 
         # model definitions
-        self.pose = poser if poser else Poser()                                 # pose estimation model
-        self.joints = joints if joints else Joints(height=wheights)             # joint estimation model
+        self.pose = poser if poser else Poser()                   # pose estimation model
+        self.joints = joints if joints else Joints()              # joint estimation model
+        self.velocity = velocity if velocity else Velocity()      # velocity estimation model
 
         # base joints
         self.j, _ = self.bodymodel.get_zero_pose_joint_and_vertex() # [24, 3]
@@ -99,10 +100,16 @@ class PoseNet(L.LightningModule):
         
         input_lengths = input.shape[0]
         
-        pred_joint = self.joints.predict_RNN(input, init_pose)
+        # predict velocity
+        init_vel = torch.zeros(12).to(self.device)
+        pred_vel = self.velocity.predict_RNN(input, init_vel)
         
-        input_pose = torch.cat((pred_joint, input), dim=1)
+        # predict joints
+        input_joint = torch.cat((pred_vel, input), dim=1)
+        pred_joint = self.joints.predict_RNN(input_joint, init_pose)
         
+        # predict pose
+        input_pose = torch.cat((pred_joint, pred_vel, input), dim=1)
         pred_pose = self.pose(input_pose.unsqueeze(0), [input_lengths])
         
         pred_pose = self._reduced_global_to_full(pred_pose.squeeze(0))

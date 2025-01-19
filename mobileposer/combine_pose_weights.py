@@ -13,6 +13,7 @@ from argparse import ArgumentParser
 from mobileposer.models_new.net import PoseNet
 from mobileposer.models_new.joints import Joints
 from mobileposer.models_new.poser import Poser
+from mobileposer.models_new.velocity import Velocity
 
 from mobileposer.constants import MODULES
 from mobileposer.utils.file_utils import get_best_checkpoint
@@ -22,8 +23,12 @@ def load_module_weights(module_name, weight_path):
     try:
         if module_name == "joints":
             return Joints.load_from_checkpoint(weight_path, winit=True)
-        else:
+        elif module_name == "poser":
             return Poser.load_from_checkpoint(weight_path)
+        elif module_name == "velocity":
+            return Velocity.load_from_checkpoint(weight_path)
+        else:
+            raise ValueError(f"Unknown module: {module_name}")
     except Exception as e:
         print(f"Error loading {module_name} weights from {weight_path}: {e}")
         return None
@@ -50,7 +55,7 @@ if __name__ == "__main__":
     checkpoints = {}
     for module_name in MODULES.keys():
         # 如果module_name非["poser", "joints"]
-        if module_name not in ["poser", "joints"]:
+        if module_name not in ["poser", "joints", "velocity"]:
             continue
         module_path = get_module_path(module_name, args.checkpoint, args.finetune, args.name, args.combo_id)
         best_ckpt = get_best_checkpoint(module_path)

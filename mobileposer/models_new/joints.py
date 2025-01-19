@@ -23,7 +23,7 @@ class Joints(L.LightningModule):
         self.hypers = finetune_hypers if finetune else train_hypers
         
         # input dimensions
-        imu_input_dim = imu_num * 12
+        imu_input_dim = imu_num * 12 + 4 * 3
         self.input_dim = imu_input_dim + 2 if height else imu_input_dim
 
         # model definitions
@@ -108,11 +108,15 @@ class Joints(L.LightningModule):
         
         imu_inputs, input_lengths = inputs
         outputs, _ = outputs
-
+        
         # target joints
         joints = outputs['joints'] # [batch_size, seq_len, 24, 3]
-        
         target_joints = joints.view(joints.shape[0], joints.shape[1], -1)
+        B, S, _ = target_joints.shape
+        
+        # change: add velocity to input
+        vels = outputs['vels'][:, :, amass.vel_joint].view(B, S, -1)
+        imu_inputs = torch.cat((vels, imu_inputs), dim=-1)
 
         if self.winit:
             imu_inputs = (imu_inputs, target_joints[:, 0])
