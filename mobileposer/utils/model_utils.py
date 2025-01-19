@@ -16,6 +16,22 @@ def load_model(model_path: str):
         model = MobilePoserNet.load_from_checkpoint(model_path)
     return model
 
+def load_joint_model(model_path: str, winit=False):
+    from mobileposer.models.joints import Joints
+    device = model_config.device
+
+    model = Joints.load_from_checkpoint(model_path, winit=winit, map_location=device)
+    
+    return model
+
+def load_pose_model(model_path: str):
+    from mobileposer.models_new.net import PoseNet
+    device = model_config.device
+    
+    model = PoseNet().to(device)
+    model.load_state_dict(torch.load(model_path, map_location=device))
+    
+    return model    
 
 def reduced_pose_to_full(reduced_pose):
     """Transform reduced pose to full pose."""

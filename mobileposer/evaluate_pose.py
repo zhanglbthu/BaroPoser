@@ -8,15 +8,14 @@ from mobileposer.config import *
 from mobileposer.helpers import * 
 import mobileposer.articulate as art
 from mobileposer.constants import MODULES
-from mobileposer.utils.model_utils import load_model, load_joint_model
+from mobileposer.utils.model_utils import load_pose_model
 from mobileposer.data import PoseDataset
-from mobileposer.models import MobilePoserNet, Joints
-from mobileposer.models import Velocity_new
+from mobileposer.models_new.net import PoseNet
 from pathlib import Path
 from mobileposer.utils.file_utils import (
     get_best_checkpoint
 )
-from mobileposer.config import model_config, paths
+from mobileposer.config import model_config
 from process import _foot_ground_probs
 from mobileposer.articulate.model import ParametricModel
 
@@ -29,8 +28,9 @@ class PoseEvaluator:
     def eval(self, pose_p, pose_t, joint_p=None, tran_p=None, tran_t=None):
         pose_p = pose_p.clone().view(-1, 24, 3, 3)
         pose_t = pose_t.clone().view(-1, 24, 3, 3)
-        tran_p = tran_p.clone().view(-1, 3)
-        tran_t = tran_t.clone().view(-1, 3)
+        if tran_p is not None and tran_t is not None:
+            tran_p = tran_p.clone().view(-1, 3)
+            tran_t = tran_t.clone().view(-1, 3)
         pose_p[:, joint_set.ignored] = torch.eye(3, device=pose_p.device)
         pose_t[:, joint_set.ignored] = torch.eye(3, device=pose_t.device)
 
@@ -88,68 +88,76 @@ def evaluate_joint(joint_t, joint_p):
     return je.mean()
 
 @torch.no_grad()
-def evaluate_pose(model:Joints , dataset, num_past_frame=40, num_future_frame=5, evaluate_tran=False,
-                  save_dir=None, tran_nn=False):
+def evaluate_pose(model: PoseNet, dataset, num_past_frame=40, num_future_frame=5,
+                  save_dir=None):
     # specify device
     device = model_config.device
 
     # load data
     xs, ys, js = zip(*[(imu.to(device), (pose.to(device), tran), (joint.to(device))) for imu, pose, joint, tran in dataset])
+
+    # setup Pose Evaluator
+    evaluator = PoseEvaluator()
+
+    # track errors
+    online_errs = []
     
     model.eval()
-    joint_err = []
     with torch.no_grad():
         for idx, (x, y, j) in enumerate(tqdm.tqdm(zip(xs, ys, js), total=len(xs))):
             # x: [N, 60], y: ([N, 144], [N, 3])
-        
+            
             model.reset()
 
             pose_t, _ = y
             
             pose_t = art.math.r6d_to_rotation_matrix(pose_t)
-            
             pose_t = pose_t.view(-1, 24, 3, 3)
-            
-            if model_config.winit:
-                joint_p = model.predict_RNN(x, pose_t[0])
-            else:
-                joint_p = [model.predict_biRNN(f)[num_past_frame] for f in torch.cat((x, x[-1].repeat(num_future_frame, 1)))]
-                joint_p = torch.stack(joint_p[num_future_frame:])
-            
-            joint_err.append(evaluate_joint(j, joint_p))
-    
-    joint_err = torch.stack(joint_err)
-    print(f"Mean joint error: {joint_err.mean()*100:.4f}")
 
-def get_best_checkpoint(model):
-    model_dir = paths.checkpoint / model / 'lw_rp_h' / 'joints'
-    # find best checkpoint in the model directory
-    best_checkpoint = None
-    best_loss = float('inf')
-    for checkpoint in model_dir.iterdir():
-        if checkpoint.suffix == '.ckpt':
-            loss = float(checkpoint.stem.split('=')[-1])
-            if loss < best_loss:
-                best_loss = loss
-                best_checkpoint = checkpoint
-    return best_checkpoint
+            pose_p = model.predict(x, pose_t[0])
+            
+            online_errs.append(evaluator.eval(pose_p, pose_t))
+            
+            if save_dir:
+                torch.save({'pose_t': pose_t, 
+                            'pose_p': pose_p, 
+                            },
+                           save_dir / f"{idx}.pt")
+
+
+    evaluator.print(torch.stack(online_errs).mean(dim=0))
+    
+    log_path = save_dir / 'log.txt'
+    
+    for online_err in online_errs:
+        with open(log_path, 'a', encoding='utf-8') as f:
+            evaluator.print_single(online_err, file=f)
+
 
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--model', type=str, required=True)
     parser.add_argument('--dataset', type=str, default='dip')
+    parser.add_argument('--name', type=str, default='default')
+    parser.add_argument('--combo_id', type=str, default='lw_rp_h')
+    parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
+    # record combo
+    print(f"combo: {amass.combos}")
+
     # load model
-    ckpt_path = get_best_checkpoint(args.model)
-    
-    model = load_joint_model(model_path=ckpt_path, winit=model_config.winit)
+    model = load_pose_model(args.model)
     
     fold = 'test'
     
-    dataset = PoseDataset(fold=fold, evaluate=args.dataset, combo_id='lw_rp_h', 
+    dataset = PoseDataset(fold=fold, evaluate=args.dataset, combo_id=args.combo_id, 
                           wheights=model_config.wheights)
+    
+    save_dir = Path('data') / 'eval' / model_config.name / args.combo_id / args.dataset
+    save_dir.mkdir(parents=True, exist_ok=True)
     
     # evaluate pose
     print(f"Starting evaluation: {args.dataset.capitalize()}")
-    evaluate_pose(model=model, dataset=dataset, evaluate_tran=True)
+    # evaluate_pose(model, dataset, evaluate_tran=True, save_dir=save_dir)
+    evaluate_pose(model=model, dataset=dataset, save_dir=save_dir)

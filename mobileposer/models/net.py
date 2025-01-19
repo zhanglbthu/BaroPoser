@@ -210,7 +210,9 @@ class MobilePoserNet(L.LightningModule):
         
         imu = data.repeat(self.num_total_frames, 1) if self.imu is None else torch.cat((self.imu[1:], data.view(1, -1)))   
         
-        pose, pred_joints, vel, contact = self.forward(imu.unsqueeze(0), [self.num_total_frames])
+        _, pred_joints, _, _ = self.forward(imu.unsqueeze(0), [self.num_total_frames])
+        
+        self.imu = imu.squeeze(0)
         
         return pred_joints.squeeze(0) 
     

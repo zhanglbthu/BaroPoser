@@ -68,9 +68,9 @@ class model_config:
     total_frames = past_frames + future_frames
 
     wheights = False
-    winit = False
+    winit = True
     combo_id = 'lw_rp_h'
-    name = 'origin_winit_birnn'
+    name = 'origin_winit_rnn_512'
 
 class amass:    
     """AMASS dataset information."""

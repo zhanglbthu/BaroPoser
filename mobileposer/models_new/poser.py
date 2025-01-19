@@ -10,7 +10,6 @@ from mobileposer.utils.model_utils import reduced_pose_to_full
 import mobileposer.articulate as art
 from mobileposer.models.rnn import RNN
 
-
 class Poser(L.LightningModule):
     """
     Inputs: N IMUs.
