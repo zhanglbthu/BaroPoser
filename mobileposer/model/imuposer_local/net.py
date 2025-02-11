@@ -14,7 +14,7 @@ from mobileposer.utils.model_utils import reduced_pose_to_full
 from mobileposer.helpers import *
 import mobileposer.articulate as art
 
-from mobileposer.imuposer.poser import Poser
+from model.imuposer_local.poser import Poser
 
 class IMUPoserNet(L.LightningModule):
     """
@@ -74,13 +74,7 @@ class IMUPoserNet(L.LightningModule):
         return model
 
     def reset(self):
-        self.rnn_state = None
         self.imu = None
-        self.current_root_y = 0
-        self.last_root_pos = torch.zeros(3).to(self.C.device)
-
-    def _prob_to_weight(self, p):
-        return (p.clamp(self.prob_threshold[0], self.prob_threshold[1]) - self.prob_threshold[0]) / (self.prob_threshold[1] - self.prob_threshold[0])
     
     def _reduced_global_to_full(self, reduced_pose):
         pose = art.math.r6d_to_rotation_matrix(reduced_pose).view(-1, joint_set.n_reduced, 3, 3)
@@ -99,8 +93,11 @@ class IMUPoserNet(L.LightningModule):
         pose_input = batch
         pred_pose = self.pose(pose_input, input_lengths) # [total_frames, 24, 3, 3]
         
-        # global pose to local
-        pred_pose = self._reduced_global_to_full(pred_pose)
+        # # global pose to local
+        # pred_pose = self._reduced_global_to_full(pred_pose)
+        
+        # 6d to rotation matrix
+        pred_pose = art.math.r6d_to_rotation_matrix(pred_pose).view(-1, 24, 3, 3)
 
         return pred_pose
     
@@ -111,6 +108,8 @@ class IMUPoserNet(L.LightningModule):
 
         # forward the pose prediction model
         pose = self.forward(imu.unsqueeze(0), [self.num_total_frames])
+        
+        self.imu = imu
 
         # get pose
         pose = pose[self.num_past_frames].view(-1, 9)

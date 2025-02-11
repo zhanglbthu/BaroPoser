@@ -194,7 +194,6 @@ class PerJointErrorEvaluator(BasePoseEvaluator):
                             radian_to_degree(local_rotation_error_array),
                             radian_to_degree(global_rotation_error_array)))
 
-
 class MeanPerJointErrorEvaluator(PerJointErrorEvaluator):
     r"""
     Mean position and local/global rotation error of all joints.

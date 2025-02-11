@@ -8,7 +8,7 @@ import numpy as np
 from mobileposer.config import *
 from mobileposer.utils.model_utils import reduced_pose_to_full
 import mobileposer.articulate as art
-from mobileposer.base_model.rnn import RNN
+from model.base_model.rnn import RNN
 
 class Poser(L.LightningModule):
     """
@@ -31,10 +31,10 @@ class Poser(L.LightningModule):
         self.input_dim = imu_input_dim
         
         # output dimensions
-        self.output_dim = joint_set.full*6
+        self.output_dim = len(joint_set.full)*6
 
         # model definitions
-        self.pose = RNN(self.input_dim, self.output_dim, 256) # pose estimation model
+        self.pose = RNN(self.input_dim, n_output=self.output_dim, n_hidden=256) # pose estimation model
         
         # log input and output dimensions in one line
         print("Poser", f"Input dimensions: {self.input_dim}", f"Output dimensions: {self.output_dim}")
@@ -86,15 +86,21 @@ class Poser(L.LightningModule):
         # predict pose
         pose_input = imu_inputs
         pose_p = self(pose_input, input_lengths)
+        
+        # convert target pose to local pose
+        target_pose = art.math.r6d_to_rotation_matrix(target_pose).view(-1, 24, 3, 3) # r6d to rotation matrix
+        target_pose = self.global_to_local_pose(target_pose)                          # global to local
+        
+        target_pose = art.math.rotation_matrix_to_r6d(target_pose)                    # rotation matrix to r6d
 
         # compute pose loss
-        pose_t = target_pose.view(B, S, 24, 6)[:, :, joint_set.reduced].view(B, S, -1)
+        pose_t = target_pose.view(B, S, 24, 6)[:, :, joint_set.full].view(B, S, -1)
         loss = self.loss(pose_p, pose_t)
 
         # joint position loss
         if self.use_pos_loss:
-            full_pose_p = self._reduced_global_to_full(pose_p)
-            
+            # full_pose_p = self._reduced_global_to_full(pose_p)
+            full_pose_p = art.math.r6d_to_rotation_matrix(pose_p).view(-1, 24, 3, 3)
             joints_p = self.bodymodel.forward_kinematics(pose=full_pose_p.view(-1, 216))[1].view(B, S, -1)
             loss += self.loss(joints_p, target_joints)
 

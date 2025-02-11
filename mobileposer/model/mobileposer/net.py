@@ -15,8 +15,6 @@ from mobileposer.helpers import *
 import mobileposer.articulate as art
 from mobileposer.models.poser import Poser
 from mobileposer.models.joints import Joints
-from mobileposer.models.footcontact import FootContact
-from mobileposer.models.velocity import Velocity
 
 class MobilePoserNet(L.LightningModule):
     """

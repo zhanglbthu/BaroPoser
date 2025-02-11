@@ -7,7 +7,7 @@ import tqdm
 from mobileposer.config import *
 from mobileposer.helpers import * 
 import mobileposer.articulate as art
-from mobileposer.utils.model_utils import load_imuposer_model
+from mobileposer.utils.model_utils import load_imuposer_model, load_imuposer_glb_model
 from mobileposer.data import PoseDataset
 from pathlib import Path
 from mobileposer.utils.file_utils import (
@@ -139,7 +139,7 @@ def evaluate_pose(model, dataset, save_dir=None):
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--model', type=str, default='data/checkpoints/imuposer/lw_rp_h/base_model.pth')
+    parser.add_argument('--model', type=str, default='data/checkpoints/imuposer_local/lw_rp_h/base_model.pth')
     parser.add_argument('--dataset', type=str, default='dip')
     parser.add_argument('--name', type=str, default='default')
     parser.add_argument('--combo_id', type=str, default='lw_rp_h')
@@ -147,7 +147,9 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # load model
-    model = load_imuposer_model(model_path=args.model, combo_id=model_config.combo_id)
+    model_name = model_config.name
+    if model_name == 'imuposer_glb':
+        model = load_imuposer_glb_model(model_path=args.model, combo_id=model_config.combo_id)
     
     fold = 'test'
     

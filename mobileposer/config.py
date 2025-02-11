@@ -70,7 +70,7 @@ class model_config:
     wheights = False
     winit = False
     combo_id = 'lw_rp_h'
-    name = 'imuposer'
+    name = 'imuposer_local_debug'
 
 class amass:    
     """AMASS dataset information."""

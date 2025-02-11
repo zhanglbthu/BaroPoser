@@ -7,8 +7,7 @@ import numpy as np
 
 from mobileposer.config import *
 import mobileposer.articulate as art
-from mobileposer.models.rnn import RNN, RNNWithInit
-
+from model.base_model.rnn import RNN, RNNWithInit
 
 class Joints(L.LightningModule):
     """
