@@ -85,12 +85,16 @@ class PoseDataset(Dataset):
             acc, ori = acc[:, :5]/amass.acc_scale, ori[:, :5]
             
             pose_global, joint = self.bodymodel.forward_kinematics(pose=pose.view(-1, 216)) # convert local rotation to global
+            
+            # compute global joint positions
+            _, joint_global = self.bodymodel.forward_kinematics(pose=pose.view(-1, 216), tran=tran.view(-1, 3))
+            
             pose = pose if self.evaluate else pose_global.view(-1, 24, 3, 3)                # use global only for training
             joint = joint.view(-1, 24, 3)
             
-            self._process_single_combo_data(acc, ori, pose, joint, tran, foot, data, height)
+            self._process_single_combo_data(acc, ori, pose, joint, tran, foot, data, height, joint_global)
 
-    def _process_single_combo_data(self, acc, ori, pose, joint, tran, foot, data, height):
+    def _process_single_combo_data(self, acc, ori, pose, joint, tran, foot, data, height, joint_glb=None):
         '''
         acc: [N, 5, 3]
         ori: [N, 5, 3, 3]
@@ -114,18 +118,20 @@ class PoseDataset(Dataset):
             data[key].extend(torch.split(value, data_len))
         
         if not self.finetune: # do not finetune translation module
-            self._process_translation_data(joint, tran, foot, data_len, data)
+            self._process_translation_data(joint, tran, foot, data_len, data, joint_glb)
 
-    def _process_translation_data(self, joint, tran, foot, data_len, data):
-        if tran is None or foot is None:
-            return
-        
-        root_vel = torch.cat((torch.zeros(1, 3), tran[1:] - tran[:-1]))
+    def _process_translation_data(self, joint, tran, foot, data_len, data, joint_glb=None):
+        # if tran is None or foot is None:
+        #     return
         vel = torch.cat((torch.zeros(1, 24, 3), torch.diff(joint, dim=0)))
-        vel[:, 0] = root_vel
+        if tran is not None:
+            root_vel = torch.cat((torch.zeros(1, 3), tran[1:] - tran[:-1]))
+            vel[:, 0] = root_vel
         
         data['vel_outputs'].extend(torch.split(vel * (datasets.fps / amass.vel_scale), data_len))
-        data['foot_outputs'].extend(torch.split(foot, data_len))
+        
+        if foot is not None:
+            data['foot_outputs'].extend(torch.split(foot, data_len))
 
     def __getitem__(self, idx):
         imu = self.data['imu_inputs'][idx].float()
@@ -134,10 +140,11 @@ class PoseDataset(Dataset):
         num_pred_joints = len(amass.pred_joints_set)
         pose = art.math.rotation_matrix_to_r6d(self.data['pose_outputs'][idx]).reshape(-1, num_pred_joints, 6)[:, amass.pred_joints_set].reshape(-1, 6*num_pred_joints)
 
-        if self.evaluate or self.finetune:
-            return imu, pose, joint, tran
-
         vel = self.data['vel_outputs'][idx].float() 
+        
+        if self.evaluate or self.finetune:
+            return imu, pose, joint, tran, vel
+
         contact = self.data['foot_outputs'][idx].float() 
 
         return imu, pose, joint, tran, vel, contact

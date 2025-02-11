@@ -27,9 +27,9 @@ class Poser(L.LightningModule):
         # input dimensions
         imu_input_dim = imu_num * 12
         if height:
-            self.input_dim = self.C.n_output_joints*3 + imu_input_dim + 2 + len(amass.vel_joint) * 3
+            self.input_dim = self.C.n_output_joints*3 + imu_input_dim + 2
         else:
-            self.input_dim = self.C.n_output_joints*3 + imu_input_dim + len(amass.vel_joint) * 3
+            self.input_dim = self.C.n_output_joints*3 + imu_input_dim
 
         # model definitions
         self.pose = RNN(self.input_dim, joint_set.n_reduced*6, 512, bidirectional=False) # pose estimation model
@@ -89,10 +89,9 @@ class Poser(L.LightningModule):
         noisy_joints = target_joints + noise
         
         # change: add velocity to input
-        vels = outputs['vels'][:, :, amass.vel_joint].view(B, S, -1)
 
         # predict pose
-        pose_input = torch.cat((noisy_joints, vels, imu_inputs), dim=-1)
+        pose_input = torch.cat((noisy_joints, imu_inputs), dim=-1)
         pose_p = self(pose_input, input_lengths)
 
         # compute pose loss

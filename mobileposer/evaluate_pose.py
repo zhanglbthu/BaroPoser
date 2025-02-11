@@ -93,7 +93,7 @@ def evaluate_pose(model: PoseNet, dataset, save_dir=None):
     device = model_config.device
 
     # load data
-    xs, ys, js = zip(*[(imu.to(device), (pose.to(device), tran), (joint.to(device))) for imu, pose, joint, tran in dataset])
+    xs, ys, js = zip(*[(imu.to(device), (pose.to(device), tran), (joint.to(device), vel.to(device))) for imu, pose, joint, tran, vel in dataset])
 
     # setup Pose Evaluator
     evaluator = PoseEvaluator()
@@ -109,11 +109,13 @@ def evaluate_pose(model: PoseNet, dataset, save_dir=None):
             model.reset()
 
             pose_t, _ = y
+            joint_t, vel_t = j
+            vel_t = vel_t[:, amass.vel_joint].view(-1, len(amass.vel_joint)*3)
             
             pose_t = art.math.r6d_to_rotation_matrix(pose_t)
             pose_t = pose_t.view(-1, 24, 3, 3)
 
-            pose_p = model.predict(x, pose_t[0])
+            pose_p = model.predict(x, pose_t[0], gt_vel=vel_t)
             
             online_errs.append(evaluator.eval(pose_p, pose_t))
             

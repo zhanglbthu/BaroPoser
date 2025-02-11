@@ -23,7 +23,7 @@ class Joints(L.LightningModule):
         self.hypers = finetune_hypers if finetune else train_hypers
         
         # input dimensions
-        imu_input_dim = imu_num * 12 + 4 * 3
+        imu_input_dim = imu_num * 12 + 3 * 3
         self.input_dim = imu_input_dim + 2 if height else imu_input_dim
 
         # model definitions

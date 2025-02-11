@@ -70,7 +70,7 @@ class model_config:
     wheights = False
     winit = True
     combo_id = 'lw_rp_h'
-    name = 'origin_vel'
+    name = 'origin_vel_woroot'
 
 class amass:    
     """AMASS dataset information."""
@@ -113,8 +113,7 @@ class amass:
     norm_joint = 0
     normalize_joints = [i for i in range(24) if i != 0]
     
-    vel_joint = [18, 2, 15, 0]
-
+    vel_joint = [18, 2, 15]
 
 class datasets:
     """Dataset information."""

@@ -96,22 +96,32 @@ class PoseNet(L.LightningModule):
         pred_pose[:, 0] = pose[:, 0]
         return pred_pose
 
-    def predict(self, input, init_pose):
+    def predict(self, input, init_pose, gt_vel=None):
         
         input_lengths = input.shape[0]
         
         # predict velocity
-        init_vel = torch.zeros(12).to(self.device)
-        pred_vel = self.velocity.predict_RNN(input, init_vel)
+        if gt_vel is None:
+            init_vel = torch.zeros(9).to(self.device)
+            pred_vel = self.velocity.predict_RNN(input, init_vel)
+        else:
+            pred_vel = gt_vel
         
         # predict joints
         input_joint = torch.cat((pred_vel, input), dim=1)
         pred_joint = self.joints.predict_RNN(input_joint, init_pose)
         
         # predict pose
-        input_pose = torch.cat((pred_joint, pred_vel, input), dim=1)
+        input_pose = torch.cat((pred_joint, input), dim=1)
         pred_pose = self.pose(input_pose.unsqueeze(0), [input_lengths])
         
         pred_pose = self._reduced_global_to_full(pred_pose.squeeze(0))
         
         return pred_pose
+    
+    def predict_vel(self, input):
+        # predict velocity
+        init_vel = torch.zeros(12).to(self.device)
+        pred_vel = self.velocity.predict_RNN(input, init_vel)
+        
+        return pred_vel
