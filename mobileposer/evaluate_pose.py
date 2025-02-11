@@ -7,10 +7,8 @@ import tqdm
 from mobileposer.config import *
 from mobileposer.helpers import * 
 import mobileposer.articulate as art
-from mobileposer.constants import MODULES
-from mobileposer.utils.model_utils import load_pose_model
+from mobileposer.utils.model_utils import load_imuposer_model
 from mobileposer.data import PoseDataset
-from mobileposer.models_new.net import PoseNet
 from pathlib import Path
 from mobileposer.utils.file_utils import (
     get_best_checkpoint
@@ -88,7 +86,7 @@ def evaluate_joint(joint_t, joint_p):
     return je.mean()
 
 @torch.no_grad()
-def evaluate_pose(model: PoseNet, dataset, save_dir=None):
+def evaluate_pose(model, dataset, save_dir=None):
     # specify device
     device = model_config.device
 
@@ -115,7 +113,11 @@ def evaluate_pose(model: PoseNet, dataset, save_dir=None):
             pose_t = art.math.r6d_to_rotation_matrix(pose_t)
             pose_t = pose_t.view(-1, 24, 3, 3)
 
-            pose_p = model.predict(x, pose_t[0], gt_vel=vel_t)
+            if model_config.winit:
+                pose_p = model.predict(x, pose_t[0], gt_vel=vel_t)
+            else:
+                online_results = [model.forward_online(f) for f in torch.cat((x, x[-1].repeat(model_config.future_frames, 1)))]
+                pose_p = torch.stack(online_results[model_config.future_frames:], dim=0)
             
             online_errs.append(evaluator.eval(pose_p, pose_t))
             
@@ -137,18 +139,15 @@ def evaluate_pose(model: PoseNet, dataset, save_dir=None):
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--model', type=str, required=True)
+    parser.add_argument('--model', type=str, default='data/checkpoints/imuposer/lw_rp_h/base_model.pth')
     parser.add_argument('--dataset', type=str, default='dip')
     parser.add_argument('--name', type=str, default='default')
     parser.add_argument('--combo_id', type=str, default='lw_rp_h')
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
-    # record combo
-    print(f"combo: {amass.combos}")
-
     # load model
-    model = load_pose_model(args.model)
+    model = load_imuposer_model(model_path=args.model, combo_id=model_config.combo_id)
     
     fold = 'test'
     

@@ -7,8 +7,7 @@ import numpy as np
 
 from mobileposer.config import *
 import mobileposer.articulate as art
-from mobileposer.models.rnn import RNN
-
+from base_model.rnn import RNN
 
 class FootContact(L.LightningModule):
     """

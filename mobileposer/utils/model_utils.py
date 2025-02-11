@@ -4,34 +4,43 @@ from mobileposer.config import *
 from mobileposer.config import model_config
 
 
-def load_model(model_path: str):
-    """Load MobilePoser model."""
-    from mobileposer.models import MobilePoserNet
+# def load_model(model_path: str):
+#     """Load MobilePoser model."""
+#     from mobileposer.models import MobilePoserNet
+#     device = model_config.device
+    
+#     try: 
+#         model = MobilePoserNet(wheights=model_config.wheights).to(device)
+#         model.load_state_dict(torch.load(model_path, map_location=device))
+#     except:
+#         model = MobilePoserNet.load_from_checkpoint(model_path)
+#     return model
+
+# def load_joint_model(model_path: str, winit=False):
+#     from mobileposer.models.joints import Joints
+#     device = model_config.device
+
+#     model = Joints.load_from_checkpoint(model_path, winit=winit, map_location=device)
+    
+#     return model
+
+# def load_pose_model(model_path: str):
+#     from mobileposer.models_new.net import PoseNet
+#     device = model_config.device
+    
+#     model = PoseNet().to(device)
+#     model.load_state_dict(torch.load(model_path, map_location=device))
+    
+#     return model    
+
+def load_imuposer_model(model_path: str, combo_id: str):
+    from mobileposer.imuposer.net import IMUPoserNet
     device = model_config.device
     
-    try: 
-        model = MobilePoserNet(wheights=model_config.wheights).to(device)
-        model.load_state_dict(torch.load(model_path, map_location=device))
-    except:
-        model = MobilePoserNet.load_from_checkpoint(model_path)
-    return model
-
-def load_joint_model(model_path: str, winit=False):
-    from mobileposer.models.joints import Joints
-    device = model_config.device
-
-    model = Joints.load_from_checkpoint(model_path, winit=winit, map_location=device)
-    
-    return model
-
-def load_pose_model(model_path: str):
-    from mobileposer.models_new.net import PoseNet
-    device = model_config.device
-    
-    model = PoseNet().to(device)
+    model = IMUPoserNet(combo_id=combo_id).to(device)
     model.load_state_dict(torch.load(model_path, map_location=device))
     
-    return model    
+    return model
 
 def reduced_pose_to_full(reduced_pose):
     """Transform reduced pose to full pose."""

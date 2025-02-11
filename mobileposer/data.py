@@ -59,13 +59,16 @@ class PoseDataset(Dataset):
         
         data = {key: [] for key in ['imu_inputs', 'pose_outputs', 'joint_outputs', 'tran_outputs', 'vel_outputs', 'foot_outputs']}
         
+        
         for data_file in tqdm(data_files):
+            
             file_data = torch.load(data_folder / data_file)
             self._process_file_data(file_data, data)
-        
+
         return data
 
     def _process_file_data(self, file_data, data):
+        
         '''
         accs: [seq_num, N, 6, 3]
         oris: [seq_num, N, 6, 3, 3]
@@ -80,7 +83,7 @@ class PoseDataset(Dataset):
         heights = file_data.get('heights', [None] * len(poses))
         
         for acc, ori, pose, tran, joint, foot, height in zip(accs, oris, poses, trans, joints, foots, heights):
-            
+
             # select only the first 5 IMUs (lw, rw, lh, rh, head)
             acc, ori = acc[:, :5]/amass.acc_scale, ori[:, :5]
             

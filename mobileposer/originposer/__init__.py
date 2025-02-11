@@ -1,5 +1,5 @@
 from .net import *
-from .rnn import *
+from base_model.rnn import *
 from .footcontact import *
 from .velocity import *
 from .poser import *

@@ -18,19 +18,15 @@ import wandb
 import sys
 from mobileposer.config import *
 
-from mobileposer.constants import MODULES
+from mobileposer.constants import IMUPOSER
 from mobileposer.data import PoseDataModule
 from mobileposer.utils.file_utils import (
     get_datestring, 
-    make_dir, 
-    get_dir_number, 
-    get_best_checkpoint
 )
 from mobileposer.config import paths, train_hypers, finetune_hypers, model_config
 
 # set precision for Tensor cores
 torch.set_float32_matmul_precision('medium')
-
 
 class TrainingManager:
     """Manage training of MobilePoser modules."""
@@ -88,7 +84,7 @@ class TrainingManager:
             
         datamodule = PoseDataModule(finetune=self.finetune, combo_id=combo_id, 
                                     wheights=model_config.wheights,
-                                    winit=True)
+                                    winit=False)
         
         trainer = self._setup_trainer(module_path)
 
@@ -123,14 +119,21 @@ def get_checkpoint_path(finetune: str, init_from: str, name: str=None):
     os.makedirs(checkpoint_path, exist_ok=True)
     return Path(checkpoint_path)
 
+def get_model(model_name: str, module_name: str):
+    # 取model_name以_分割，取第一个元素
+    model = model_name.split("_")[0]
+    if model == "imuposer":
+        module = IMUPOSER[module_name]
+        model = module(combo_id=model_config.combo_id)
+    
+    return model
+
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--module", default=None)
     parser.add_argument("--fast-dev-run", action="store_true")
     parser.add_argument("--finetune", type=str, default=None)
     parser.add_argument("--init-from", nargs="?", default=None, type=str)
-    # parser.add_argument("--combo_id", type=str)
-    # parser.add_argument("--name", type=str)
     args = parser.parse_args()
 
     # set seed for reproducible results
@@ -151,24 +154,5 @@ if __name__ == "__main__":
     imu_set = amass.combos_mine[model_config.combo_id]
     imu_num = len(imu_set)
     
-    # train single module
-    if args.module:
-        if args.module not in MODULES.keys() and args.module != "velocity_new":
-            raise ValueError(f"Module {args.module} not found.")
-
-        if args.init_from:
-            model_dir = Path(args.init_from)
-        
-        module = MODULES[args.module]
-        model = module(imu_num = imu_num, height=model_config.wheights)
-
-        if args.finetune: 
-            model_path = get_best_checkpoint(model_dir)
-            model = module.from_pretrained(model_path=os.path.join(model_dir, model_path)) # load pre-trained model
-        
-        training_manager.train_module(model, args.module, checkpoint_path, combo_id=model_config.combo_id)
-    else:
-        # train all modules
-        for module_name, module in MODULES.items():
-            model = module(imu_num = imu_num, height=model_config.wheights)
-            training_manager.train_module(model, module_name, checkpoint_path, combo_id=model_config.combo_id)
+    model = get_model(model_config.name, args.module)
+    training_manager.train_module(model, args.module, checkpoint_path, combo_id=model_config.combo_id)

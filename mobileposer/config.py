@@ -6,7 +6,7 @@ class train_hypers:
     """Hyperparameters for training."""
     batch_size = 256
     num_workers = 8
-    num_epochs = 200
+    num_epochs = 100
     accelerator = "gpu"
     device = 1
     lr = 1e-3
@@ -68,9 +68,9 @@ class model_config:
     total_frames = past_frames + future_frames
 
     wheights = False
-    winit = True
+    winit = False
     combo_id = 'lw_rp_h'
-    name = 'origin_vel_woroot'
+    name = 'imuposer'
 
 class amass:    
     """AMASS dataset information."""
@@ -94,6 +94,7 @@ class amass:
         'lw_rw_lp_rp_h': [0, 1, 2, 3, 4],
         'lw_rp_h': [0, 3, 4],
         'lw_rw_h': [0, 1, 4],
+        'lw_rp': [0, 3],
         'lw': [0],
         'rp': [3],
         'h': [4]
