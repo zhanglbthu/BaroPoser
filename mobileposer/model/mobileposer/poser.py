@@ -6,17 +6,17 @@ from torch.nn import functional as F
 import numpy as np
 
 from mobileposer.config import *
+from mobileposer.config import amass
 from mobileposer.utils.model_utils import reduced_pose_to_full
 import mobileposer.articulate as art
-from mobileposer.models.rnn import RNN
-
+from model.base_model.rnn import RNN
 
 class Poser(L.LightningModule):
     """
     Inputs: N IMUs.
     Outputs: SMPL Pose Parameters (as 6D Rotations).
     """
-    def __init__(self, finetune: bool=False, imu_num: int=3, height: bool=False, winit=False):
+    def __init__(self, finetune: bool=False, combo_id: str="lw_rp_h", height: bool=False):
         super().__init__()
         
         # constants
@@ -25,6 +25,8 @@ class Poser(L.LightningModule):
         self.hypers = finetune_hypers if finetune else train_hypers
 
         # input dimensions
+        imu_set = amass.combos_mine[combo_id]
+        imu_num = len(imu_set)
         imu_input_dim = imu_num * 12
         if height:
             self.input_dim = self.C.n_output_joints*3 + imu_input_dim + 2
@@ -32,7 +34,7 @@ class Poser(L.LightningModule):
             self.input_dim = self.C.n_output_joints*3 + imu_input_dim
 
         # model definitions
-        self.pose = RNN(self.input_dim, joint_set.n_reduced*6, 512, bidirectional=False) # pose estimation model
+        self.pose = RNN(self.input_dim, joint_set.n_reduced*6, 256) # pose estimation model
         
         # log input and output dimensions
         if torch.cuda.current_device() == 0:

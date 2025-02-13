@@ -7,7 +7,7 @@ import tqdm
 from mobileposer.config import *
 from mobileposer.helpers import * 
 import mobileposer.articulate as art
-from mobileposer.utils.model_utils import load_imuposer_model, load_imuposer_glb_model
+from mobileposer.utils.model_utils import load_imuposer_model, load_imuposer_glb_model, load_mobileposer_model, load_heightposer_model
 from mobileposer.data import PoseDataset
 from pathlib import Path
 from mobileposer.utils.file_utils import (
@@ -114,7 +114,7 @@ def evaluate_pose(model, dataset, save_dir=None):
             pose_t = pose_t.view(-1, 24, 3, 3)
 
             if model_config.winit:
-                pose_p = model.predict(x, pose_t[0], gt_vel=vel_t)
+                pose_p = model.predict(x, pose_t[0])
             else:
                 online_results = [model.forward_online(f) for f in torch.cat((x, x[-1].repeat(model_config.future_frames, 1)))]
                 pose_p = torch.stack(online_results[model_config.future_frames:], dim=0)
@@ -136,7 +136,6 @@ def evaluate_pose(model, dataset, save_dir=None):
         with open(log_path, 'a', encoding='utf-8') as f:
             evaluator.print_single(online_err, file=f)
 
-
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--model', type=str, default='data/checkpoints/imuposer_local/lw_rp_h/base_model.pth')
@@ -147,13 +146,19 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # load model
-    model_name = model_config.name
-    if model_name == 'imuposer_glb':
-        model = load_imuposer_glb_model(model_path=args.model, combo_id=model_config.combo_id)
+    model_name = model_config.name.split('_')[0]
+    if model_name == 'imuposer':
+        model = load_imuposer_model(model_path=args.model, combo_id=model_config.combo_id)
+    elif model_name == 'mobileposer':
+        model = load_mobileposer_model(model_path=args.model, combo_id=model_config.combo_id)
+    elif model_name == 'heightposer':
+        model = load_heightposer_model(model_path=args.model, combo_id=model_config.combo_id)
+    else:
+        raise ValueError(f"Model {model_name} not supported.")
     
     fold = 'test'
     
-    dataset = PoseDataset(fold=fold, evaluate=args.dataset, combo_id=args.combo_id, 
+    dataset = PoseDataset(fold=fold, evaluate=args.dataset, combo_id=model_config.combo_id, 
                           wheights=model_config.wheights)
     
     save_dir = Path('data') / 'eval' / model_config.name / args.combo_id / args.dataset

@@ -13,18 +13,19 @@ from mobileposer.config import *
 from mobileposer.utils.model_utils import reduced_pose_to_full
 from mobileposer.helpers import *
 import mobileposer.articulate as art
-from mobileposer.models_new.poser import Poser
-from mobileposer.models_new.joints import Joints
-from mobileposer.models_new.velocity import Velocity
 
-class PoseNet(L.LightningModule):
+from model.heightposer.joints import Joints
+from model.heightposer.poser import Poser
+
+class HeightPoserNet(L.LightningModule):
     """
     Inputs: N IMUs.
     Outputs: SMPL Pose Parameters (as 6D Rotations) and Translation. 
     """
 
-    def __init__(self, poser: Poser=None, joints: Joints=None, velocity: Velocity=None,
-                 finetune: bool=False, wheights: bool=False):
+    def __init__(self, poser: Poser=None, joints: Joints=None,
+                 finetune: bool=False, wheights: bool=False, 
+                 combo_id: str="lw_rp_h"):
         super().__init__()
 
         # constants
@@ -37,9 +38,8 @@ class PoseNet(L.LightningModule):
         self.global_to_local_pose = self.bodymodel.inverse_kinematics_R
 
         # model definitions
-        self.pose = poser if poser else Poser()                   # pose estimation model
-        self.joints = joints if joints else Joints()              # joint estimation model
-        self.velocity = velocity if velocity else Velocity()      # velocity estimation model
+        self.pose = poser if poser else Poser(combo_id=combo_id)                   # pose estimation model
+        self.joints = joints if joints else Joints(combo_id=combo_id)              # joint estimation model
 
         # base joints
         self.j, _ = self.bodymodel.get_zero_pose_joint_and_vertex() # [24, 3]
@@ -74,7 +74,7 @@ class PoseNet(L.LightningModule):
     @classmethod
     def from_pretrained(cls, model_path):
         # init pretrained-model
-        model = PoseNet.load_from_checkpoint(model_path)
+        model = HeightPoserNet.load_from_checkpoint(model_path)
         model.hypers = finetune_hypers
         model.finetune = True
         return model
@@ -96,19 +96,12 @@ class PoseNet(L.LightningModule):
         pred_pose[:, 0] = pose[:, 0]
         return pred_pose
 
-    def predict(self, input, init_pose, gt_vel=None):
+    def predict(self, input, init_pose):
         
         input_lengths = input.shape[0]
         
-        # predict velocity
-        if gt_vel is None:
-            init_vel = torch.zeros(9).to(self.device)
-            pred_vel = self.velocity.predict_RNN(input, init_vel)
-        else:
-            pred_vel = gt_vel
-        
         # predict joints
-        input_joint = torch.cat((pred_vel, input), dim=1)
+        input_joint = input
         pred_joint = self.joints.predict_RNN(input_joint, init_pose)
         
         # predict pose

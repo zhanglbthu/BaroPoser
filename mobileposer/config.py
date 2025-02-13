@@ -6,10 +6,10 @@ class train_hypers:
     """Hyperparameters for training."""
     batch_size = 256
     num_workers = 8
-    num_epochs = 100
+    num_epochs = 200
     accelerator = "gpu"
     device = 1
-    lr = 1e-3
+    lr = 3e-4
 
 
 class finetune_hypers:
@@ -68,15 +68,15 @@ class model_config:
     total_frames = past_frames + future_frames
 
     wheights = False
-    winit = False
-    combo_id = 'lw_rp_h'
-    name = 'imuposer_local_debug'
+    winit = True
+    combo_id = 'lw_rp'
+    name = 'heightposer'
 
 class amass:    
     """AMASS dataset information."""
     # device-location combinationsa
     combos = {
-        'lw_rp_h': [0, 3, 4],
+        'lw_rp': [0, 3],
         # 'rw_rp_h': [1, 3, 4],
         # 'lw_lp_h': [0, 2, 4],
         # 'rw_lp_h': [1, 2, 4],
@@ -114,7 +114,7 @@ class amass:
     norm_joint = 0
     normalize_joints = [i for i in range(24) if i != 0]
     
-    vel_joint = [18, 2, 15]
+    vel_joint = [*range(24)]
 
 class datasets:
     """Dataset information."""

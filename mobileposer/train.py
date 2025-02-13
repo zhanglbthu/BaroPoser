@@ -18,7 +18,7 @@ import wandb
 import sys
 from mobileposer.config import *
 
-from mobileposer.constants import IMUPOSER
+from mobileposer.constants import IMUPOSER, MOBILEPOSER, HEIGHTPOSER
 from mobileposer.data import PoseDataModule
 from mobileposer.utils.file_utils import (
     get_datestring, 
@@ -125,6 +125,14 @@ def get_model(model_name: str, module_name: str):
     if model == "imuposer":
         module = IMUPOSER[module_name]
         model = module(combo_id=model_config.combo_id)
+    
+    elif model == "mobileposer":
+        module = MOBILEPOSER[module_name]
+        model = module(combo_id=model_config.combo_id)
+        
+    elif model == "heightposer":
+        module = HEIGHTPOSER[module_name]
+        model = module(combo_id=model_config.combo_id)    
     
     return model
 

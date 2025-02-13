@@ -1,7 +1,14 @@
 import os
 
 # from mobileposer.models import MobilePoserNet, Poser, Joints, FootContact, Velocity
-from imuposer.poser import Poser as IMUPoser
+from model.imuposer_local.poser import Poser as IMUPoser
+
+from model.mobileposer.joints import Joints as MobileJoints
+from model.mobileposer.poser import Poser as MobilePoser
+
+from model.heightposer.joints import Joints as HeightJoints
+from model.heightposer.poser import Poser as HeightPoser
+from model.heightposer.velocity import Velocity as HeightVelocity
 
 # # List of available modules
 # MODULES = {
@@ -14,6 +21,17 @@ from imuposer.poser import Poser as IMUPoser
 
 IMUPOSER = {
     'poser': IMUPoser,
+}
+
+MOBILEPOSER = {
+    'joints': MobileJoints,
+    'poser': MobilePoser,
+}
+
+HEIGHTPOSER = {
+    'joints': HeightJoints,
+    'poser': HeightPoser,
+    'velocity': HeightVelocity,
 }
 
 # Calibration constants

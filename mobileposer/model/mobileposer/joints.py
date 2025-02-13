@@ -14,15 +14,16 @@ class Joints(L.LightningModule):
     Inputs: N IMUs.
     Outputs: 24 Joint positions. 
     """
-    def __init__(self, finetune: bool=False, imu_num: int=3, height: bool=False, winit=False, device='cuda'):
+    def __init__(self, finetune: bool=False, combo_id: str="lw_rp_h", height: bool=False, winit: bool=False, device='cuda'):
         super().__init__()
-
         # constants
         self.C = model_config
         self.finetune = finetune
         self.hypers = finetune_hypers if finetune else train_hypers
         
         # input dimensions
+        imu_set = amass.combos_mine[combo_id]
+        imu_num = len(imu_set)
         imu_input_dim = imu_num * 12
         self.input_dim = imu_input_dim + 2 if height else imu_input_dim
 
@@ -108,10 +109,9 @@ class Joints(L.LightningModule):
         
         imu_inputs, input_lengths = inputs
         outputs, _ = outputs
-
+        
         # target joints
         joints = outputs['joints'] # [batch_size, seq_len, 24, 3]
-        
         target_joints = joints.view(joints.shape[0], joints.shape[1], -1)
 
         if self.winit:
@@ -119,7 +119,7 @@ class Joints(L.LightningModule):
         
         # predicted joints
         pred_joints = self(imu_inputs, input_lengths)
-
+        
         # compute loss
         loss = self.loss(pred_joints, target_joints)
         loss += self.t_weight*self.compute_temporal_loss(pred_joints)

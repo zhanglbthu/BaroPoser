@@ -34,7 +34,7 @@ from mobileposer.config import model_config
 #     return model    
 
 def load_imuposer_model(model_path: str, combo_id: str):
-    from mobileposer.imuposer.net import IMUPoserNet
+    from model.imuposer_local.net import IMUPoserNet
     device = model_config.device
     
     model = IMUPoserNet(combo_id=combo_id).to(device)
@@ -43,7 +43,7 @@ def load_imuposer_model(model_path: str, combo_id: str):
     return model
 
 def load_imuposer_glb_model(model_path: str, combo_id: str):
-    from mobileposer.imuposer_glb.net import IMUPoserGlbNet
+    from model.imuposer_glb.net import IMUPoserGlbNet
     device = model_config.device
     
     model = IMUPoserGlbNet(combo_id=combo_id).to(device)
@@ -51,6 +51,24 @@ def load_imuposer_glb_model(model_path: str, combo_id: str):
     
     return model
 
+def load_mobileposer_model(model_path: str, combo_id: str):
+    from model.mobileposer.net import MobilePoserNet
+    device = model_config.device
+    
+    model = MobilePoserNet(combo_id=combo_id).to(device)
+    model.load_state_dict(torch.load(model_path, map_location=device))
+    
+    return model
+
+def load_heightposer_model(model_path: str, combo_id: str):
+    from model.heightposer.net import HeightPoserNet
+    device = model_config.device
+    
+    model = HeightPoserNet(combo_id=combo_id).to(device)
+    model.load_state_dict(torch.load(model_path, map_location=device))
+    
+    return model
+    
 def reduced_pose_to_full(reduced_pose):
     """Transform reduced pose to full pose."""
     B, S = reduced_pose.shape[0], reduced_pose.shape[1]

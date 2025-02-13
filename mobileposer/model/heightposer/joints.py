@@ -7,15 +7,14 @@ import numpy as np
 
 from mobileposer.config import *
 import mobileposer.articulate as art
-from mobileposer.models.rnn import RNN, RNNWithInit
-
+from model.base_model.rnn import RNN, RNNWithInit
 
 class Joints(L.LightningModule):
     """
     Inputs: N IMUs.
     Outputs: 24 Joint positions. 
     """
-    def __init__(self, finetune: bool=False, imu_num: int=3, height: bool=False, winit: bool=True, device='cuda'):
+    def __init__(self, finetune: bool=False, combo_id: str="lw_rp_h", height: bool=False, winit: bool=True, device='cuda'):
         super().__init__()
         # constants
         self.C = model_config
@@ -23,7 +22,9 @@ class Joints(L.LightningModule):
         self.hypers = finetune_hypers if finetune else train_hypers
         
         # input dimensions
-        imu_input_dim = imu_num * 12 + 3 * 3
+        imu_set = amass.combos_mine[combo_id]
+        imu_num = len(imu_set)
+        imu_input_dim = imu_num * 12
         self.input_dim = imu_input_dim + 2 if height else imu_input_dim
 
         # model definitions
@@ -113,10 +114,6 @@ class Joints(L.LightningModule):
         joints = outputs['joints'] # [batch_size, seq_len, 24, 3]
         target_joints = joints.view(joints.shape[0], joints.shape[1], -1)
         B, S, _ = target_joints.shape
-        
-        # change: add velocity to input
-        vels = outputs['vels'][:, :, amass.vel_joint].view(B, S, -1)
-        imu_inputs = torch.cat((vels, imu_inputs), dim=-1)
 
         if self.winit:
             imu_inputs = (imu_inputs, target_joints[:, 0])

@@ -9,20 +9,25 @@ import torch
 from pathlib import Path
 from tqdm import tqdm 
 from argparse import ArgumentParser
+from config import *
 
 # from mobileposer.models import MobilePoserNet, Poser, Joints, Velocity, FootContact, Velocity_new
-from mobileposer.constants import IMUPOSER
-from mobileposer.imuposer.net import IMUPoserNet
+from mobileposer.constants import IMUPOSER, MOBILEPOSER, HEIGHTPOSER
+from model.imuposer_local.net import IMUPoserNet
+from model.mobileposer.net import MobilePoserNet
+from model.heightposer.net import HeightPoserNet
 from mobileposer.utils.file_utils import get_file_number, get_best_checkpoint
-
 
 def load_module_weights(modules, module_name, weight_path):
     try:
-        return modules[module_name].load_from_checkpoint(weight_path)
+        model = modules[module_name](combo_id=model_config.combo_id)
+        checkpoint = torch.load(weight_path)
+        model.load_state_dict(checkpoint["state_dict"])
+        return model
+        
     except Exception as e:
         print(f"Error loading {module_name} weights from {weight_path}: {e}")
         return None
-
 
 def get_module_path(module_name, name=None, combo_id=None):
     
@@ -46,6 +51,10 @@ if __name__ == "__main__":
     model_type = args.name.split("_")[0]
     if model_type == "imuposer":
         modules = IMUPOSER
+    elif model_type == "mobileposer":
+        modules = MOBILEPOSER
+    elif model_type == "heightposer":
+        modules = HEIGHTPOSER
     
     for module_name in modules.keys():
         module_path = get_module_path(module_name, args.name, args.combo_id)
@@ -59,8 +68,12 @@ if __name__ == "__main__":
     # load combined model and save
     model_name = "base_model.pth" if not args.finetune else "model_finetuned.pth"
     
-    if  model_type == "imuposer":
+    if model_type == "imuposer":
         model = IMUPoserNet(**checkpoints)
+    elif model_type == "mobileposer":
+        model = MobilePoserNet(**checkpoints)
+    elif model_type == "heightposer":
+        model = HeightPoserNet(**checkpoints)
     else:
         raise ValueError(f"Unknown model name: {model_type}")
         

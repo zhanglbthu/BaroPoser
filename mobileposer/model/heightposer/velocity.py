@@ -7,7 +7,7 @@ import lightning as L
 from torch.optim.lr_scheduler import StepLR 
 
 from mobileposer.articulate.model import ParametricModel
-from mobileposer.models.rnn import RNN, RNNWithInit
+from model.base_model.rnn import RNN, RNNWithInit
 from mobileposer.config import *
 
 class Velocity(L.LightningModule):
@@ -16,7 +16,7 @@ class Velocity(L.LightningModule):
     Outputs: Per-Frame Root Velocity. 
     """
 
-    def __init__(self, finetune: bool=False, imu_num: int=3, combo_id = 'lw_rp_h', height: bool=False, winit=False):
+    def __init__(self, finetune: bool=False, combo_id = 'lw_rp_h', height: bool=False, winit=False):
         super().__init__()
         
         self.imu_set = amass.combos_mine[combo_id]

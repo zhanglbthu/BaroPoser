@@ -16,7 +16,7 @@ class Poser(L.LightningModule):
     Inputs: N IMUs.
     Outputs: SMPL Pose Parameters (as 6D Rotations).
     """
-    def __init__(self, finetune: bool=False, imu_num: int=3, height: bool=False, winit=False):
+    def __init__(self, finetune: bool=False, combo_id: str="lw_rp_h", height: bool=False, winit=False):
         super().__init__()
         
         # constants
@@ -25,6 +25,8 @@ class Poser(L.LightningModule):
         self.hypers = finetune_hypers if finetune else train_hypers
 
         # input dimensions
+        imu_set = amass.combos_mine[combo_id]
+        imu_num = len(imu_set)
         imu_input_dim = imu_num * 12
         if height:
             self.input_dim = self.C.n_output_joints*3 + imu_input_dim + 2
@@ -87,8 +89,6 @@ class Poser(L.LightningModule):
         # generate noise for target joints for beter robustness
         noise = torch.randn(target_joints.size()).to(self.device) * 0.04 # gaussian noise with std = 0.04
         noisy_joints = target_joints + noise
-        
-        # change: add velocity to input
 
         # predict pose
         pose_input = torch.cat((noisy_joints, imu_inputs), dim=-1)
