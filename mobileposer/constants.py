@@ -5,6 +5,8 @@ from model.imuposer_local.poser import Poser as IMUPoser
 
 from model.mobileposer.joints import Joints as MobileJoints
 from model.mobileposer.poser import Poser as MobilePoser
+from model.mobileposer.velocity import Velocity as MobileVelocity
+from model.mobileposer.footcontact import FootContact as MobileFootContact
 
 from model.heightposer.joints import Joints as HeightJoints
 from model.heightposer.poser import Poser as HeightPoser
@@ -26,6 +28,8 @@ IMUPOSER = {
 MOBILEPOSER = {
     'joints': MobileJoints,
     'poser': MobilePoser,
+    'velocity': MobileVelocity,
+    'foot_contact': MobileFootContact,
 }
 
 HEIGHTPOSER = {

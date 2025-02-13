@@ -68,9 +68,9 @@ class model_config:
     total_frames = past_frames + future_frames
 
     wheights = False
-    winit = True
+    winit = False
     combo_id = 'lw_rp'
-    name = 'heightposer'
+    name = 'mobileposer'
 
 class amass:    
     """AMASS dataset information."""

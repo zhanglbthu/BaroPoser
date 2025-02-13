@@ -1,9 +1,6 @@
 import os
-import math
-import numpy as np
 import torch
 torch.set_printoptions(sci_mode=False)
-from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
 import lightning as L
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -12,8 +9,6 @@ from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from lightning.pytorch import seed_everything
 from argparse import ArgumentParser
 from pathlib import Path
-from typing import List
-from tqdm import tqdm 
 import wandb
 import sys
 from mobileposer.config import *
