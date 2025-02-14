@@ -10,7 +10,6 @@ import rbdl
 import numpy as np
 from ...math import adjoint_transformation_matrix_np
 
-
 class RBDLModel:
     def __init__(self, model_file: str, gravity=np.array((0, -9.81, 0)), update_kinematics_by_hand=False):
         r"""

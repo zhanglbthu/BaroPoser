@@ -15,6 +15,8 @@ from mobileposer.helpers import *
 import mobileposer.articulate as art
 from model.mobileposer.poser import Poser
 from model.mobileposer.joints import Joints
+from model.mobileposer.velocity import Velocity
+from model.mobileposer.footcontact import FootContact
 
 class MobilePoserNet(L.LightningModule):
     """
@@ -22,7 +24,8 @@ class MobilePoserNet(L.LightningModule):
     Outputs: SMPL Pose Parameters (as 6D Rotations) and Translation. 
     """
 
-    def __init__(self, poser: Poser=None, joints: Joints=None, finetune: bool=False, 
+    def __init__(self, poser: Poser=None, joints: Joints=None, foot_contact: FootContact=None, velocity: Velocity=None,
+                 finetune: bool=False, 
                  wheights: bool=False,
                  combo_id: str="lw_rp_h"):
         super().__init__()
@@ -39,6 +42,8 @@ class MobilePoserNet(L.LightningModule):
         # model definitions
         self.pose = poser if poser else Poser(combo_id=combo_id)                   # pose estimation model
         self.joints = joints if joints else Joints(combo_id=combo_id)              # joint estimation model
+        self.foot_contact = foot_contact if foot_contact else FootContact(combo_id=combo_id)    # foot contact estimation model
+        self.velocity = velocity if velocity else Velocity(combo_id=combo_id)       # velocity estimation model
 
         # base joints
         self.j, _ = self.bodymodel.get_zero_pose_joint_and_vertex() # [24, 3]
@@ -54,7 +59,8 @@ class MobilePoserNet(L.LightningModule):
         self.imu = None
         self.rnn_state = None
 
-        if getenv("PHYSICS"):
+        if model_config.physics:
+            print('Using Physics Optimizer')
             from dynamics import PhysicsOptimizer
             self.dynamics_optimizer = PhysicsOptimizer(debug=False)
             self.dynamics_optimizer.reset_states()
@@ -106,8 +112,16 @@ class MobilePoserNet(L.LightningModule):
         
         # global pose to local
         pred_pose = self._reduced_global_to_full(pred_pose)
+        
+        # forward the foot-ground contact probability model
+        tran_input = torch.cat((pred_joints, batch), dim=-1)
+        foot_contact = self.foot_contact(tran_input, input_lengths) # [batch_size, total_frames, 2]
 
-        return pred_pose, pred_joints
+        # foward the foot-joint velocity model
+        vel_input = torch.cat((pred_joints, batch), dim=-1)
+        pred_vel = self.velocity.forward_online(vel_input, input_lengths).squeeze(0)
+
+        return pred_pose, pred_joints, pred_vel, foot_contact
 
     @torch.no_grad()
     def forward_online(self, data, input_lengths=None):
@@ -115,13 +129,22 @@ class MobilePoserNet(L.LightningModule):
         imu = data.repeat(self.num_total_frames, 1) if self.imu is None else torch.cat((self.imu[1:], data.view(1, -1)))
 
         # forward the pose prediction model
-        pose, pred_joints = self.forward(imu.unsqueeze(0), [self.num_total_frames])
+        pose, pred_joints, vel, contact = self.forward(imu.unsqueeze(0), [self.num_total_frames])
 
         # get pose
         pose = pose[self.num_past_frames].view(-1, 9)
 
         # compute the joint positions from predicted pose
         joints = pred_joints.squeeze(0)[self.num_past_frames].view(24, 3)
+        
+        contact = contact[0][self.num_past_frames]
+        
+        if model_config.physics:
+            joint_vel = vel.view(-1, 24, 3)
+            
+            # optimize pose
+            pose, _ = self.dynamics_optimizer.optimize_frame(pose, joint_vel[self.num_past_frames]*amass.vel_scale, contact, imu)
+            pose = pose.view(24, 3, 3)
         
         # update the imu
         self.imu = imu

@@ -16,6 +16,7 @@ import mobileposer.articulate as art
 
 from model.heightposer.joints import Joints
 from model.heightposer.poser import Poser
+from model.heightposer.velocity import Velocity
 
 class HeightPoserNet(L.LightningModule):
     """
@@ -23,7 +24,7 @@ class HeightPoserNet(L.LightningModule):
     Outputs: SMPL Pose Parameters (as 6D Rotations) and Translation. 
     """
 
-    def __init__(self, poser: Poser=None, joints: Joints=None,
+    def __init__(self, poser: Poser=None, joints: Joints=None, velocity: Velocity=None,
                  finetune: bool=False, wheights: bool=False, 
                  combo_id: str="lw_rp_h"):
         super().__init__()
@@ -106,6 +107,8 @@ class HeightPoserNet(L.LightningModule):
         
         # predict pose
         input_pose = torch.cat((pred_joint, input), dim=1)
+        # remove heights
+        input_pose = input_pose[:, :-2]
         pred_pose = self.pose(input_pose.unsqueeze(0), [input_lengths])
         
         pred_pose = self._reduced_global_to_full(pred_pose.squeeze(0))

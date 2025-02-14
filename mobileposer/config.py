@@ -45,6 +45,11 @@ class paths:
     raw_totalcapture_official = Path("/root/autodl-tmp/mobileposer/dataset_raw/TotalCapture/official")
     processed_totalcapture = Path("/root/autodl-tmp/mobileposer/dataset_work/TotalCapture")
     
+    # Physics file
+    physics_model_file = "/home/project/mocap/MobilePoser/mobileposer/data/physics/physics.urdf"
+    physics_parameter_file = Path("/home/project/mocap/MobilePoser/mobileposer/data/physics/physics_parameters.json")
+    plane_file = Path("/home/project/mocap/MobilePoser/mobileposer/data/physics/plane.urdf")
+    
     vicon_gt_dir = Path('/root/autodl-tmp/mobileposer/dataset_raw/TotalCapture/official')
     imu_dir = Path('/root/autodl-tmp/mobileposer/dataset_raw/TotalCapture/gryo_mag')
     calib_dir = Path('/root/autodl-tmp/mobileposer/dataset_raw/TotalCapture/imu')
@@ -69,8 +74,9 @@ class model_config:
 
     wheights = False
     winit = False
+    physics = True
     combo_id = 'lw_rp'
-    name = 'mobileposer'
+    name = 'mobileposer_physics'
 
 class amass:    
     """AMASS dataset information."""

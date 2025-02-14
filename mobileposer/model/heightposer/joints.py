@@ -25,7 +25,7 @@ class Joints(L.LightningModule):
         imu_set = amass.combos_mine[combo_id]
         imu_num = len(imu_set)
         imu_input_dim = imu_num * 12
-        self.input_dim = imu_input_dim + 2 if height else imu_input_dim
+        self.input_dim = imu_input_dim + 2 if model_config.wheights else imu_input_dim
 
         # model definitions
         self.bodymodel = art.model.ParametricModel(paths.smpl_file, device=device)
