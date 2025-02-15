@@ -28,7 +28,7 @@ class Poser(L.LightningModule):
         imu_set = amass.combos_mine[combo_id]
         imu_num = len(imu_set)
         imu_input_dim = imu_num * 12
-        if height:
+        if model_config.poser_wh:
             self.input_dim = self.C.n_output_joints*3 + imu_input_dim + 2
         else:
             self.input_dim = self.C.n_output_joints*3 + imu_input_dim
@@ -97,7 +97,9 @@ class Poser(L.LightningModule):
         # compute pose loss
         pose_t = target_pose.view(B, S, 24, 6)[:, :, joint_set.reduced].view(B, S, -1)
         loss = self.loss(pose_p, pose_t)
-        loss += self.t_weight*self.compute_jerk_loss(pose_p)
+        
+        if self.C.jerk_loss:
+            loss += self.t_weight*self.compute_jerk_loss(pose_p)
 
         # joint position loss
         if self.use_pos_loss:

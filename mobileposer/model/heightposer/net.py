@@ -107,8 +107,10 @@ class HeightPoserNet(L.LightningModule):
         
         # predict pose
         input_pose = torch.cat((pred_joint, input), dim=1)
+        
         # remove heights
-        input_pose = input_pose[:, :-2]
+        if model_config.wheights:
+            input_pose = input_pose[:, :-2]
         pred_pose = self.pose(input_pose.unsqueeze(0), [input_lengths])
         
         pred_pose = self._reduced_global_to_full(pred_pose.squeeze(0))

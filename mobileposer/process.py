@@ -468,19 +468,11 @@ def process_imuposer(split: str="train"):
                 # ensure sizes are consistent
                 assert tran.shape[0] == pose.shape[0]
                 
-                # downsample
-                step = 2
-                acc = acc[::step]
-                ori = ori[::step]
-                pose = pose[::step]
-                tran = tran[::step]
+                print(f"frames: {pose.shape[0]}")
                 
                 grot, joint, vert = body_model.forward_kinematics(pose, tran=tran, calc_mesh=True)
                 
                 ground = _foot_min(joint)
-                
-                # acc = _syn_acc(vert[:, vi_mask])
-                # ori = grot[:, ji_mask]
 
                 accs.append(acc)    # N, 5, 3
                 oris.append(ori)    # N, 5, 3, 3
@@ -499,7 +491,7 @@ def process_imuposer(split: str="train"):
         'heights': heights
     }
     data_path = paths.eval_dir / f"imuposer_{split}.pt"
-    torch.save(data, data_path)
+    # torch.save(data, data_path)
 
 def create_directories():
     paths.processed_datasets.mkdir(exist_ok=True, parents=True)
