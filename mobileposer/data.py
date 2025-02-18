@@ -58,9 +58,11 @@ class PoseDataset(Dataset):
         data_files = self._get_data_files(data_folder)
         
         data = {key: [] for key in ['imu_inputs', 'pose_outputs', 'joint_outputs', 'tran_outputs', 'vel_outputs', 'foot_outputs']}
-        
+        # count = 0
         for data_file in tqdm(data_files):
-            
+            # if count > 0:
+            #     break
+            # count += 1
             file_data = torch.load(data_folder / data_file)
             self._process_file_data(file_data, data)
 

@@ -72,13 +72,20 @@ class model_config:
     future_frames = 5
     total_frames = past_frames + future_frames
 
-    wheights = True
-    winit = True
+    wheights = False
+    ja_wheights = False
+    winit = False
     physics = False
-    jerk_loss = False
     poser_wh = False
+    
+    jerk_loss = True
+    jerk_loss_weight = 1e-5
+    
+    symmetry_loss = True
+    sym_loss_weight = 1e-3
+    
     combo_id = 'lw_rp'
-    name = 'heightposer_part'
+    name = 'mobileposer'
 
 class amass:    
     """AMASS dataset information."""
@@ -185,6 +192,11 @@ class joint_set:
     full = list(range(0, 24))
     reduced = [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 14, 15, 16, 17, 18, 19]
     ignored = [0, 7, 8, 10, 11, 20, 21, 22, 23]
+    
+    pred = [0, 2, 3, 5, 6, 8, 9, 11, 13, 16, 18, 20, 22]
+    rest = [1, 4, 7, 10, 12, 14, 15, 17, 19, 21, 23]
+    rarm = [14, 17, 19, 21, 23]
+    larm = [13, 16, 18, 20, 22]
 
     n_full = len(full)
     n_ignored = len(ignored)

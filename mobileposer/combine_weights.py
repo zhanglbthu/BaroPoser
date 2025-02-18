@@ -57,7 +57,7 @@ if __name__ == "__main__":
         modules = HEIGHTPOSER
     
     for module_name in modules.keys():
-        module_path = get_module_path(module_name, args.name, args.combo_id)
+        module_path = get_module_path(module_name, args.name, model_config.combo_id)
         best_ckpt = get_best_checkpoint(module_path)
         if best_ckpt:
             checkpoints[module_name] = load_module_weights(modules, module_name, module_path / best_ckpt)
@@ -77,6 +77,6 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Unknown model name: {model_type}")
         
-    model_path = Path("data/checkpoints") / args.name / args.combo_id / model_name
+    model_path = Path("data/checkpoints") / args.name / model_config.combo_id / model_name
     torch.save(model.state_dict(), model_path)
     print(f"Model written to {model_path}.")

@@ -2,23 +2,21 @@ import os
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-import numpy as np
 import lightning as L
-from torch.optim.lr_scheduler import StepLR 
+import numpy as np
 
-from mobileposer.articulate.model import ParametricModel
-from mobileposer.models.rnn import RNN
 from mobileposer.config import *
 import mobileposer.articulate as art
+from mobileposer.models.rnn import RNN
 
 
-class Velocity(L.LightningModule):
+class FootContact(L.LightningModule):
     """
     Inputs: N IMUs.
-    Outputs: Per-Frame Root Velocity. 
+    Outputs: Foot Contact Probability ([s_lfoot, s_rfoot]).
     """
 
-    def __init__(self, finetune: bool=False, combo_id = 'lw_rp_h', height: bool=False):
+    def __init__(self, finetune: bool=False, combo_id = 'lw_rp_h', height: bool=False, winit=False):
         super().__init__()
         
         # constants
@@ -35,15 +33,14 @@ class Velocity(L.LightningModule):
             self.input_dim = self.C.n_output_joints*3 + imu_input_dim
 
         # model definitions
-        self.vel = RNN(self.input_dim, 24 * 3, 256)  # per-frame velocity of the root joint. 
-        self.rnn_state = None
+        self.footcontact = RNN(self.input_dim, 2, 64)  # foot-ground probability model
 
         # log input and output dimensions
         print(f"Input dimensions: {self.input_dim}")
-        print(f"Output dimensions: {24*3}")
+        print(f"Output dimensions: 2")
         
-        # loss function 
-        self.loss = nn.MSELoss()
+        # loss function (binary cross-entropy)
+        self.loss = nn.BCEWithLogitsLoss()
 
         # track stats
         self.validation_step_loss = []
@@ -51,14 +48,9 @@ class Velocity(L.LightningModule):
         self.save_hyperparameters()
 
     def forward(self, batch, input_lengths=None):
-        # forward velocity model
-        vel, _, _ = self.vel(batch, input_lengths)
-        return vel
-
-    def forward_online(self, batch, input_lengths=None):
-        # forward velocity model
-        vel, _, self.rnn_state = self.vel(batch, input_lengths, self.rnn_state)
-        return vel
+        # forward foot contact model
+        foot_contact, _, _ = self.footcontact(batch, input_lengths)
+        return foot_contact
 
     def shared_step(self, batch):
         # unpack data
@@ -70,31 +62,17 @@ class Velocity(L.LightningModule):
         joints = outputs['joints']
         target_joints = joints.view(joints.shape[0], joints.shape[1], -1)
 
-        # target velocity
-        target_vel = outputs['vels'].view(joints.shape[0], joints.shape[1], 72)
+        # ground-truth foot contacts
+        foot_contacts = outputs['foot_contacts']
 
         # add noise to target joints for beter robustness
-        noise = torch.randn(target_joints.size()).to(self.device) * 0.025 # gaussian noise with std = 0.025
+        noise = torch.randn(target_joints.size()).to(self.device) * 0.04 # gaussian noise with std = 0.04
         target_joints += noise
         
-        # predict root joint velocity
+        # predict foot-ground contact probability
         tran_input = torch.cat((target_joints, imu_inputs), dim=-1)
-        pred_vel, _, _ = self.vel(tran_input, input_lengths)
-        loss = self.compute_loss(pred_vel, target_vel)
-
-        return loss
-
-    def compute_loss(self, pred_vel, gt_vel):
-        loss = sum(self.compute_vel_loss(pred_vel, gt_vel, i) for i in [1, 3, 9, 27])
-        return loss
-
-    def compute_vel_loss(self, pred_vel, gt_vel, n=1):
-        T = pred_vel.shape[1]
-        loss = 0.0
-
-        for m in range(0, T//n):
-            end = min(n*m+n, T)
-            loss += self.loss(pred_vel[:, m*n:end, :], gt_vel[:, m*n:end, :])
+        pred_contacts, _, _ = self.footcontact(tran_input, input_lengths)
+        loss = self.loss(pred_contacts, foot_contacts)
 
         return loss
 
@@ -117,7 +95,7 @@ class Velocity(L.LightningModule):
 
     def on_fit_start(self):
         self.bodymodel = art.model.ParametricModel(paths.smpl_file, device=self.device)
-
+    
     def on_train_epoch_end(self):
         self.epoch_end_callback(self.training_step_loss, loop_type="train")
         self.training_step_loss.clear()    # free memory

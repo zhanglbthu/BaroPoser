@@ -51,11 +51,17 @@ class MobilePoserNet(L.LightningModule):
         self.floor_y = self.j[10:12, 1].min().item() # [1]
 
         # constants
+        self.gravity_velocity = torch.tensor([0, joint_set.gravity_velocity, 0]).to(self.C.device)
+        self.prob_threshold = (0.5, 0.9)
         self.num_past_frames = model_config.past_frames
         self.num_future_frames = model_config.future_frames
         self.num_total_frames = self.num_past_frames + self.num_future_frames
 
         # variables
+        self.last_lfoot_pos, self.last_rfoot_pos = (pos.to(self.C.device) for pos in self.feet_pos)
+        self.last_root_pos = torch.zeros(3).to(self.C.device)
+        self.last_joints = torch.zeros(24, 3).to(self.C.device)
+        self.current_root_y = 0
         self.imu = None
         self.rnn_state = None
 
@@ -124,7 +130,7 @@ class MobilePoserNet(L.LightningModule):
         return pred_pose, pred_joints, pred_vel, foot_contact
 
     @torch.no_grad()
-    def forward_online(self, data, input_lengths=None):
+    def forward_online(self, data, input_lengths=None, tran=False):
         
         imu = data.repeat(self.num_total_frames, 1) if self.imu is None else torch.cat((self.imu[1:], data.view(1, -1)))
 
@@ -137,7 +143,32 @@ class MobilePoserNet(L.LightningModule):
         # compute the joint positions from predicted pose
         joints = pred_joints.squeeze(0)[self.num_past_frames].view(24, 3)
         
+        # compute translation positions from predicted pose
         contact = contact[0][self.num_past_frames]
+        lfoot_pos, rfoot_pos = joints[10], joints[11]
+        lfoot_pos, rfoot_pos = joints[10], joints[11]
+        if contact[0] > contact[1]:
+            contact_vel = self.last_lfoot_pos - lfoot_pos + self.gravity_velocity
+        else:
+            contact_vel = self.last_rfoot_pos - rfoot_pos + self.gravity_velocity
+        
+        # velocity from network-based estimation
+        root_vel = vel.view(-1, 24, 3)[:, 0] # select root velocity
+        pred_vel = root_vel[self.num_past_frames] / (datasets.fps/amass.vel_scale)
+        
+        weight = self._prob_to_weight(contact.max())
+        
+        velocity = art.math.lerp(pred_vel, contact_vel, weight)
+
+        # remove penetration
+        current_foot_y = self.current_root_y + min(lfoot_pos[1].item(), rfoot_pos[1].item())
+        if current_foot_y + velocity[1].item() <= self.floor_y:
+            velocity[1] = self.floor_y - current_foot_y
+
+        self.current_root_y += velocity[1].item()
+        self.last_lfoot_pos, self.last_rfoot_pos = lfoot_pos, rfoot_pos
+        self.imu = imu.squeeze(0)
+        self.last_root_pos += velocity
         
         if model_config.physics:
             joint_vel = vel.view(-1, 24, 3)
@@ -146,7 +177,7 @@ class MobilePoserNet(L.LightningModule):
             pose, _ = self.dynamics_optimizer.optimize_frame(pose, joint_vel[self.num_past_frames]*amass.vel_scale, contact, imu)
             pose = pose.view(24, 3, 3)
         
-        # update the imu
-        self.imu = imu
+        if tran:
+            return pose, self.last_root_pos.clone()
         
         return pose

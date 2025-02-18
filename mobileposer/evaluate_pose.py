@@ -86,7 +86,7 @@ def evaluate_joint(joint_t, joint_p):
     return je.mean()
 
 @torch.no_grad()
-def evaluate_pose(model, dataset, save_dir=None):
+def evaluate_pose(model, dataset, save_dir=None, debug=False):
     # specify device
     device = model_config.device
 
@@ -113,6 +113,18 @@ def evaluate_pose(model, dataset, save_dir=None):
             pose_t = art.math.r6d_to_rotation_matrix(pose_t)
             pose_t = pose_t.view(-1, 24, 3, 3)
 
+            if debug:
+
+                joint_p, joint_all_p, pose_p = model.predict(x, pose_t[0], debug=True)
+                if save_dir:
+                    torch.save({'pose_t': pose_t, 
+                                'pose_p': pose_p, 
+                                'joint_p': joint_p,
+                                'joint_all_p': joint_all_p,
+                                },
+                                save_dir / f"{idx}.pt")
+                continue
+            
             if model_config.winit:
                 pose_p = model.predict(x, pose_t[0])
             else:
@@ -127,14 +139,14 @@ def evaluate_pose(model, dataset, save_dir=None):
                             },
                            save_dir / f"{idx}.pt")
 
-
-    evaluator.print(torch.stack(online_errs).mean(dim=0))
-    
-    log_path = save_dir / 'log.txt'
-    
-    for online_err in online_errs:
-        with open(log_path, 'a', encoding='utf-8') as f:
-            evaluator.print_single(online_err, file=f)
+    if not debug:
+        evaluator.print(torch.stack(online_errs).mean(dim=0))
+        
+        log_path = save_dir / 'log.txt'
+        
+        for online_err in online_errs:
+            with open(log_path, 'a', encoding='utf-8') as f:
+                evaluator.print_single(online_err, file=f)
 
 if __name__ == '__main__':
     parser = ArgumentParser()
@@ -162,9 +174,12 @@ if __name__ == '__main__':
                           wheights=model_config.wheights)
     
     save_dir = Path('data') / 'eval' / model_config.name / model_config.combo_id / args.dataset
+    if args.debug:
+        save_dir = Path('debug')
+    print(f"Saving results to: {save_dir}")
     save_dir.mkdir(parents=True, exist_ok=True)
     
     # evaluate pose
     print(f"Starting evaluation: {args.dataset.capitalize()}")
     # evaluate_pose(model, dataset, evaluate_tran=True, save_dir=save_dir)
-    evaluate_pose(model=model, dataset=dataset, save_dir=save_dir)
+    evaluate_pose(model=model, dataset=dataset, save_dir=save_dir, debug=args.debug)

@@ -9,7 +9,7 @@ from mobileposer.config import *
 import mobileposer.articulate as art
 from model.base_model.rnn import RNN, RNNWithInit
 
-class Joints(L.LightningModule):
+class JointsAll(L.LightningModule):
     """
     Inputs: N IMUs.
     Outputs: 24 Joint positions. 
@@ -24,11 +24,11 @@ class Joints(L.LightningModule):
         # input dimensions
         imu_set = amass.combos_mine[combo_id]
         imu_num = len(imu_set)
-        imu_input_dim = imu_num * 12
-        self.input_dim = imu_input_dim + 2 if model_config.wheights else imu_input_dim
+        imu_input_dim = len(joint_set.pred) * 3 + imu_num * 12
+        self.input_dim = imu_input_dim + 2 if model_config.ja_wheights else imu_input_dim
         
         # output dimensions
-        pred_joint = joint_set.pred
+        pred_joint = joint_set.full
         self.output_dim = len(pred_joint) * 3
 
         # model definitions
@@ -36,14 +36,11 @@ class Joints(L.LightningModule):
         
         self.winit = winit
         self.imu = None
-        self.num_past_frames = model_config.past_frames
-        self.num_future_frames = model_config.future_frames
-        self.num_total_frames = self.num_past_frames + self.num_future_frames
 
         if self.winit:
             print("Using RNN model winit")
-            self.joints = RNNWithInit(n_input=self.input_dim, n_output = self.output_dim, n_hidden=512,
-                                    n_rnn_layer=2, dropout=0.4) # joint estimation model with init
+            self.joints = RNN(n_input=self.input_dim, n_output = self.output_dim, n_hidden=512,
+                                    n_rnn_layer=2, dropout=0.4, bidirectional=False) # joint estimation model with init
         else:
             print("Using biRNN model")
             self.joints = RNN(self.input_dim, self.output_dim, 256)
@@ -64,7 +61,7 @@ class Joints(L.LightningModule):
     @classmethod
     def from_pretrained(cls, model_path):
         # init pretrained-model
-        model = Joints.load_from_checkpoint(model_path)
+        model = JointsAll.load_from_checkpoint(model_path)
         model.hypers = finetune_hypers
         model.finetune = True
         return model
@@ -75,17 +72,15 @@ class Joints(L.LightningModule):
 
         return joints
 
-    def predict_RNN(self, input, init_pose):
+    def predict_RNN(self, input):
         input_lengths = input.shape[0]
         
-        init_pose = init_pose.view(1, 24, 3, 3)
+        # init_pose = init_pose.view(1, 24, 3, 3)
         
         # init_joint = self.bodymodel.forward_kinematics(init_pose)[1].view(-1, 72)
         
-        init_joint = self.bodymodel.forward_kinematics(init_pose)[1]
-        init_joint = init_joint[:, joint_set.pred].view(-1, self.output_dim)
-        
-        input = (input.unsqueeze(0), init_joint)
+        # input = (input.unsqueeze(0), init_joint)
+        input = input.unsqueeze(0)
         
         pred_joints = self.forward(input, [input_lengths])
         
@@ -115,16 +110,21 @@ class Joints(L.LightningModule):
         inputs, outputs = batch
         
         imu_inputs, input_lengths = inputs
+        
+        if not model_config.ja_wheights and model_config.wheights:
+            imu_inputs = imu_inputs[:, :, :-2]
+        
         outputs, _ = outputs
         
         # target joints
         joints = outputs['joints'] # [batch_size, seq_len, 24, 3]
-        joints = joints[:, :, joint_set.pred]
+
         target_joints = joints.view(joints.shape[0], joints.shape[1], -1)
         B, S, _ = target_joints.shape
-
-        if self.winit:
-            imu_inputs = (imu_inputs, target_joints[:, 0])
+        
+        # concatenate input
+        pred_joints = joints[:, :, joint_set.pred].view(B, S, -1)
+        imu_inputs = torch.cat((pred_joints, imu_inputs), dim=-1)
         
         # predicted joints
         pred_joints = self(imu_inputs, input_lengths)
@@ -132,8 +132,11 @@ class Joints(L.LightningModule):
         # compute loss
         loss = self.loss(pred_joints, target_joints)
         
-        # if self.C.jerk_loss:
-        #     loss += self.t_weight*self.compute_temporal_loss(pred_joints)
+        if self.C.symmetry_loss:
+            loss += self.C.sym_loss_weight*self.compute_symmetry_loss(pred_joints, target_joints)
+        
+        if self.C.jerk_loss:
+            loss += self.C.jerk_loss_weight*self.compute_temporal_loss(pred_joints)
             
         return loss
 
@@ -142,6 +145,23 @@ class Joints(L.LightningModule):
         l1_norm = torch.norm(acc, p=1, dim=2)
         return l1_norm.sum(dim=1).mean() 
 
+    def compute_symmetry_loss(self, pred_joint, target_joint):
+        B, S = pred_joint.shape[:2]
+        
+        joint_p, joint_t = pred_joint.view(B, S, -1, 3), target_joint.view(B, S, -1, 3)
+        joint_rarm_p = joint_p[:, :, joint_set.rarm]        
+        joint_larm_t = joint_t[:, :, joint_set.larm]
+        
+        # extract y values from arm joints: [B, S, joint_num, 3] -> [B, S, joint_num]
+        y_rarm_p = joint_rarm_p[:, :, :, 1].view(B, S, -1)
+        y_larm_t = joint_larm_t[:, :, :, 1].view(B, S, -1)
+        
+        sym_loss = torch.abs(y_rarm_p - y_larm_t)
+        
+        return sym_loss.sum(dim=1).mean()
+        
+        
+    
     def training_step(self, batch, batch_idx):
         loss = self.shared_step(batch)
         self.log("training_step_loss", loss.item(), batch_size=self.hypers.batch_size)

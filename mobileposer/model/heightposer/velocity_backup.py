@@ -7,10 +7,8 @@ import lightning as L
 from torch.optim.lr_scheduler import StepLR 
 
 from mobileposer.articulate.model import ParametricModel
-from mobileposer.models.rnn import RNN
+from model.base_model.rnn import RNN, RNNWithInit
 from mobileposer.config import *
-import mobileposer.articulate as art
-
 
 class Velocity(L.LightningModule):
     """
@@ -18,29 +16,30 @@ class Velocity(L.LightningModule):
     Outputs: Per-Frame Root Velocity. 
     """
 
-    def __init__(self, finetune: bool=False, combo_id = 'lw_rp_h', height: bool=False):
+    def __init__(self, finetune: bool=False, combo_id = 'lw_rp_h', height: bool=False, winit=False):
         super().__init__()
+        
+        self.imu_set = amass.combos_mine[combo_id]
+        self.imu_nums = len(self.imu_set)
         
         # constants
         self.C = model_config
         self.hypers = train_hypers
-
-        # input dimensions
-        imu_set = amass.combos_mine[combo_id]
-        imu_num = len(imu_set)
-        imu_input_dim = imu_num * 12
-        if height:
-            self.input_dim = self.C.n_output_joints*3 + imu_input_dim + 2
-        else:
-            self.input_dim = self.C.n_output_joints*3 + imu_input_dim
-
+        self.bodymodel = ParametricModel(paths.smpl_file, device=self.C.device)
+        self.input_size = 12 * self.imu_nums + self.C.n_output_joints*3
+        self.vel_joint = amass.vel_joint
+        self.output_size = len(self.vel_joint) * 3
+        
         # model definitions
-        self.vel = RNN(self.input_dim, 24 * 3, 256)  # per-frame velocity of the root joint. 
+        self.vel = RNNWithInit(n_input=self.input_size, n_output=self.output_size, n_hidden=512,
+                                 n_rnn_layer=2, dropout=0.4)
+        
         self.rnn_state = None
 
         # log input and output dimensions
-        print(f"Input dimensions: {self.input_dim}")
-        print(f"Output dimensions: {24*3}")
+        print(f"combo_id: {combo_id}")
+        print(f"Input dimensions: {self.input_size}")
+        print(f"Output dimensions: {self.output_size}")
         
         # loss function 
         self.loss = nn.MSELoss()
@@ -49,7 +48,33 @@ class Velocity(L.LightningModule):
         self.validation_step_loss = []
         self.training_step_loss = []
         self.save_hyperparameters()
+        
+        # constants
+        self.num_past_frames = model_config.past_frames
+        self.num_future_frames = model_config.future_frames
+        self.num_total_frames = self.num_past_frames + self.num_future_frames
 
+    def reset(self):
+        self.rnn_state = None
+        self.imu = None
+        self.last_root_pos = torch.zeros(3).to(self.C.device)
+
+    def forward(self, batch, input_lengths=None):
+        # forward joint model
+        vel, _, _ = self.vel(batch, input_lengths)
+
+        return vel
+
+    def predict_RNN(self, input, init_vel):
+        input_lengths = input.shape[0]
+        init_vel = init_vel.view(1, self.output_size) 
+        
+        input = (input.unsqueeze(0), init_vel)
+        
+        pred_vel = self.forward(input, [input_lengths])
+        
+        return pred_vel.squeeze(0)
+        
     def forward(self, batch, input_lengths=None):
         # forward velocity model
         vel, _, _ = self.vel(batch, input_lengths)
@@ -59,7 +84,7 @@ class Velocity(L.LightningModule):
         # forward velocity model
         vel, _, self.rnn_state = self.vel(batch, input_lengths, self.rnn_state)
         return vel
-
+    
     def shared_step(self, batch):
         # unpack data
         inputs, outputs = batch
@@ -69,17 +94,20 @@ class Velocity(L.LightningModule):
         # target joints
         joints = outputs['joints']
         target_joints = joints.view(joints.shape[0], joints.shape[1], -1)
+        B, S, _, _ = joints.shape
 
         # target velocity
-        target_vel = outputs['vels'].view(joints.shape[0], joints.shape[1], 72)
-
+        target_vel = outputs['vels'][:, :, amass.vel_joint].view(B, S, -1)
+        
         # add noise to target joints for beter robustness
         noise = torch.randn(target_joints.size()).to(self.device) * 0.025 # gaussian noise with std = 0.025
         target_joints += noise
-        
-        # predict root joint velocity
-        tran_input = torch.cat((target_joints, imu_inputs), dim=-1)
-        pred_vel, _, _ = self.vel(tran_input, input_lengths)
+
+        # predict joint velocity
+        # change: add init vel
+        imu_inputs = torch.cat((target_joints, imu_inputs), dim=-1)
+        imu_inputs = (imu_inputs, target_vel[:, 0])
+        pred_vel, _, _ = self.vel(imu_inputs, input_lengths)
         loss = self.compute_loss(pred_vel, target_vel)
 
         return loss
@@ -114,9 +142,6 @@ class Velocity(L.LightningModule):
         inputs, target = batch
         imu_inputs, input_lengths = inputs
         return self(imu_inputs, input_lengths)
-
-    def on_fit_start(self):
-        self.bodymodel = art.model.ParametricModel(paths.smpl_file, device=self.device)
 
     def on_train_epoch_end(self):
         self.epoch_end_callback(self.training_step_loss, loop_type="train")

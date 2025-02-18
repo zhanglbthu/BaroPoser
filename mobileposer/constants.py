@@ -11,6 +11,8 @@ from model.mobileposer.footcontact import FootContact as MobileFootContact
 from model.heightposer.joints import Joints as HeightJoints
 from model.heightposer.poser import Poser as HeightPoser
 from model.heightposer.velocity import Velocity as HeightVelocity
+from model.heightposer.jointsAll import JointsAll as HeightJointsAll
+from model.heightposer.footcontact import FootContact as HeightFootContact
 
 # # List of available modules
 # MODULES = {
@@ -34,8 +36,10 @@ MOBILEPOSER = {
 
 HEIGHTPOSER = {
     'joints': HeightJoints,
+    'joint_all': HeightJointsAll,
     'poser': HeightPoser,
     'velocity': HeightVelocity,
+    'foot_contact': HeightFootContact,
 }
 
 # Calibration constants

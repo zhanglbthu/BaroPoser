@@ -15,8 +15,10 @@ from mobileposer.helpers import *
 import mobileposer.articulate as art
 
 from model.heightposer.joints import Joints
+from model.heightposer.jointsAll import JointsAll
 from model.heightposer.poser import Poser
 from model.heightposer.velocity import Velocity
+from model.heightposer.footcontact import FootContact
 
 class HeightPoserNet(L.LightningModule):
     """
@@ -24,7 +26,12 @@ class HeightPoserNet(L.LightningModule):
     Outputs: SMPL Pose Parameters (as 6D Rotations) and Translation. 
     """
 
-    def __init__(self, poser: Poser=None, joints: Joints=None, velocity: Velocity=None,
+    def __init__(self, 
+                 poser: Poser=None, 
+                 joints: Joints=None, 
+                 joint_all: JointsAll=None,
+                 velocity: Velocity=None,
+                 foot_contact: FootContact=None,
                  finetune: bool=False, wheights: bool=False, 
                  combo_id: str="lw_rp_h"):
         super().__init__()
@@ -41,6 +48,9 @@ class HeightPoserNet(L.LightningModule):
         # model definitions
         self.pose = poser if poser else Poser(combo_id=combo_id)                   # pose estimation model
         self.joints = joints if joints else Joints(combo_id=combo_id)              # joint estimation model
+        self.jointsAll = joint_all if joint_all else JointsAll(combo_id=combo_id)  # joint estimation model
+        self.velocity = velocity if velocity else Velocity(combo_id=combo_id)      # velocity estimation model
+        self.foot_contact = foot_contact if foot_contact else FootContact(combo_id=combo_id)  # foot-ground contact model
 
         # base joints
         self.j, _ = self.bodymodel.get_zero_pose_joint_and_vertex() # [24, 3]
@@ -70,7 +80,7 @@ class HeightPoserNet(L.LightningModule):
         # track stats
         self.validation_step_loss = []
         self.training_step_loss = []
-        self.save_hyperparameters(ignore=['poser', 'joints', 'foot_contact', 'velocity'])
+        self.save_hyperparameters(ignore=['poser', 'joints', 'foot_contact', 'velocity', 'joint_all'])
 
     @classmethod
     def from_pretrained(cls, model_path):
@@ -97,7 +107,7 @@ class HeightPoserNet(L.LightningModule):
         pred_pose[:, 0] = pose[:, 0]
         return pred_pose
 
-    def predict(self, input, init_pose):
+    def predict(self, input, init_pose, detail=False, tran=False):
         
         input_lengths = input.shape[0]
         
@@ -105,15 +115,36 @@ class HeightPoserNet(L.LightningModule):
         input_joint = input
         pred_joint = self.joints.predict_RNN(input_joint, init_pose)
         
+        # predict joint all            
+        input_joint_all = torch.cat((pred_joint, input), dim=1)
+        if not self.C.ja_wheights and self.C.wheights:
+            input_joint_all = input_joint_all[:, :-2]
+
+        pred_joint_all = self.jointsAll.predict_RNN(input_joint_all)
+        
+        # predict velocity
+        input_vel = torch.cat((pred_joint_all, input), dim=1)
+        pred_vel_all = self.velocity.predict_RNN(input_vel, torch.zeros(72).to(self.C.device))
+        pred_vel_all = pred_vel_all / (datasets.fps/amass.vel_scale)
+        pred_root_vel = pred_vel_all[:, :3] 
+        
         # predict pose
-        input_pose = torch.cat((pred_joint, input), dim=1)
+        input_pose = torch.cat((pred_joint_all, input), dim=1)
         
         # remove heights
         if model_config.wheights:
             input_pose = input_pose[:, :-2]
+            
         pred_pose = self.pose(input_pose.unsqueeze(0), [input_lengths])
         
         pred_pose = self._reduced_global_to_full(pred_pose.squeeze(0))
+        
+        if detail:
+            return pred_joint, pred_joint_all, pred_pose
+        
+        if tran:
+            translation = self.velocity_to_root_position(pred_root_vel)
+            return pred_pose, translation
         
         return pred_pose
     
@@ -123,3 +154,13 @@ class HeightPoserNet(L.LightningModule):
         pred_vel = self.velocity.predict_RNN(input, init_vel)
         
         return pred_vel
+    
+    @staticmethod
+    def velocity_to_root_position(velocity):
+        r"""
+        Change velocity to root position. (not optimized)
+
+        :param velocity: Velocity tensor in shape [num_frame, 3].
+        :return: Translation tensor in shape [num_frame, 3] for root positions.
+        """
+        return torch.stack([velocity[:i+1].sum(dim=0) for i in range(velocity.shape[0])])
