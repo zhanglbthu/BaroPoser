@@ -35,7 +35,7 @@ class Velocity(L.LightningModule):
             self.input_dim = self.C.n_output_joints*3 + imu_input_dim
 
         # model definitions
-        self.vel = RNN(self.input_dim, 24 * 3, 256)  # per-frame velocity of the root joint. 
+        self.vel = RNN(self.input_dim, 24 * 3, 256, bidirectional=False)  # per-frame velocity of the root joint. 
         self.rnn_state = None
 
         # log input and output dimensions

@@ -58,10 +58,8 @@ def evaluate_tran(model, dataset, save_dir=None, debug=False):
             
             if model_config.winit:
                 _, joint_p, pose_p = model.predict(x, pose_t[0], detail=True)
-                
                 tran_p = [model.forward_online(joints=j) for j in joint_p]
                 
-                    
             else:
                 online_results = [model.forward_online(f, tran=True) for f in torch.cat((x, x[-1].repeat(model_config.future_frames, 1)))]
                 pose_p, tran_p = [torch.stack(_)[model_config.future_frames:] for _ in zip(*online_results)]
@@ -94,6 +92,14 @@ def evaluate_tran(model, dataset, save_dir=None, debug=False):
                         errs.append((vel_t - vel_p).norm() / (move_distance_t[end] - move_distance_t[start]) * window_size)
                     if len(errs) > 0:
                         tran_errors[window_size].append(sum(errs) / len(errs))
+            
+            if save_dir:
+                torch.save({'pose_t': pose_t, 
+                            'pose_p': pose_p,
+                            'tran_t': tran_t,
+                            'tran_p': tran_p,
+                            },
+                           save_dir / f"{idx}.pt")
 
     if not debug:
         print([0] + [torch.tensor(_).mean() for _ in tran_errors.values()])
