@@ -47,8 +47,8 @@ class HeightPoserNet(L.LightningModule):
 
         # model definitions
         self.pose = poser if poser else Poser(combo_id=combo_id)                   # pose estimation model
-        self.joints = joints if joints else Joints(combo_id=combo_id)              # joint estimation model
-        self.jointsAll = joint_all if joint_all else JointsAll(combo_id=combo_id)  # joint estimation model
+        # self.joints = joints if joints else Joints(combo_id=combo_id)              # joint estimation model
+        # self.jointsAll = joint_all if joint_all else JointsAll(combo_id=combo_id)  # joint estimation model
         self.velocity = velocity if velocity else Velocity(combo_id=combo_id)      # velocity estimation model
         self.foot_contact = foot_contact if foot_contact else FootContact(combo_id=combo_id)  # foot-ground contact model
 
@@ -107,9 +107,66 @@ class HeightPoserNet(L.LightningModule):
         pred_pose[:, 0] = pose[:, 0]
         return pred_pose
 
-    def predict(self, input, init_pose, detail=False, tran=False):
+    def predict_full(self, input, init_pose):
+        input_lengths = input.shape[0]
+        
+        pred_pose = self.pose.predict_RNN(input, init_pose)
+        pred_pose = self._reduced_global_to_full(pred_pose).view(-1, 24, 3, 3)
+        
+        pred_joint = self.bodymodel.forward_kinematics(pred_pose)[1].view(-1, 72)
+        
+        if model_config.wheights:
+            input = input[:, :-2]
+        
+        input_tran = torch.cat((pred_joint, input), dim=1)
+
+        pred_vel = self.velocity.predict_RNN(input_tran, torch.zeros(72).to(self.C.device))
+        
+        input_tran = input_tran.view(1, -1, 96)
+        pred_contact = self.foot_contact(input_tran, [input_lengths])
+        pred_contact = pred_contact.view(-1, 2)
+        
+        pred_vel = pred_vel / (datasets.fps/amass.vel_scale)
+        pred_root_vel = pred_vel[:, :3]
+        
+        # translation = self.velocity_to_root_position(pred_root_vel)
+        translation = []
+        joints = pred_joint.view(-1, 24, 3)
+        for i in range(input_lengths):
+            contact = pred_contact[i]
+            lfoot_pos, rfoot_pos = joints[i, 10], joints[i, 11]
+            if contact[0] > contact[1]:
+                contact_vel = self.last_lfoot_pos - lfoot_pos + self.gravity_velocity
+            else:
+                contact_vel = self.last_rfoot_pos - rfoot_pos + self.gravity_velocity
+            
+            root_vel = pred_root_vel[i]
+            weight = self._prob_to_weight(contact.max())
+            contact_vel = root_vel
+            velocity = art.math.lerp(root_vel, contact_vel, weight)
+            
+            # remove penetration
+            current_foot_y = self.current_root_y + min(lfoot_pos[1].item(), rfoot_pos[1].item())
+            if current_foot_y + velocity[1].item() <= self.floor_y:
+                velocity[1] = self.floor_y - current_foot_y
+            
+            self.current_root_y += velocity[1].item()
+            self.last_lfoot_pos, self.last_rfoot_pos = lfoot_pos, rfoot_pos
+            self.last_root_pos += velocity
+            translation.append(self.last_root_pos.clone())
+            
+        translation = torch.stack(translation)
+
+        return pred_pose, translation
+    
+    def predict(self, input, init_pose, detail=False, tran=False, poser_only=False):
         
         input_lengths = input.shape[0]
+        
+        if poser_only:
+            pred_pose = self.pose.predict_RNN(input, init_pose)
+            pred_pose = self._reduced_global_to_full(pred_pose)
+            return pred_pose
         
         # predict joints
         input_joint = input

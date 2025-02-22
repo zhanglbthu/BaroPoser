@@ -35,8 +35,8 @@ MOBILEPOSER = {
 }
 
 HEIGHTPOSER = {
-    'joints': HeightJoints,
-    'joint_all': HeightJointsAll,
+    # 'joints': HeightJoints,
+    # 'joint_all': HeightJointsAll,
     'poser': HeightPoser,
     'velocity': HeightVelocity,
     'foot_contact': HeightFootContact,

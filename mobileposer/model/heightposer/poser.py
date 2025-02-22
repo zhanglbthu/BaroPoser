@@ -10,13 +10,15 @@ from mobileposer.config import amass
 from mobileposer.utils.model_utils import reduced_pose_to_full
 import mobileposer.articulate as art
 from mobileposer.models.rnn import RNN
+from model.base_model.rnn import RNNWithInit
 
 class Poser(L.LightningModule):
     """
     Inputs: N IMUs.
     Outputs: SMPL Pose Parameters (as 6D Rotations).
     """
-    def __init__(self, finetune: bool=False, combo_id: str="lw_rp_h", height: bool=False, winit=False):
+    def __init__(self, finetune: bool=False, combo_id: str="lw_rp_h", height: bool=False, winit=False,
+                 device='cuda'):
         super().__init__()
         
         # constants
@@ -28,13 +30,21 @@ class Poser(L.LightningModule):
         imu_set = amass.combos_mine[combo_id]
         imu_num = len(imu_set)
         imu_input_dim = imu_num * 12
+        
         if model_config.poser_wh:
-            self.input_dim = self.C.n_output_joints*3 + imu_input_dim + 2
+            self.input_dim = imu_input_dim + 2
         else:
-            self.input_dim = self.C.n_output_joints*3 + imu_input_dim
-
+            self.input_dim = imu_input_dim
+            
         # model definitions
-        self.pose = RNN(self.input_dim, joint_set.n_reduced*6, 512, bidirectional=False) # pose estimation model
+        self.bodymodel = art.model.ParametricModel(paths.smpl_file, device=device)
+        self.pose = RNNWithInit(n_input=self.input_dim, 
+                                n_output=joint_set.n_reduced*6, 
+                                n_hidden=512, 
+                                n_rnn_layer=2, 
+                                dropout=0.4,
+                                init_size=24 * 3,
+                                bidirectional=False) # pose estimation model
         
         # log input and output dimensions
         if torch.cuda.current_device() == 0:
@@ -67,6 +77,18 @@ class Poser(L.LightningModule):
         pred_pose[:, 0] = pose[:, 0]
         return pred_pose
 
+    def predict_RNN(self, input, init_pose):
+        input_lengths = input.shape[0]
+        
+        init_pose = init_pose.view(1, 24, 3, 3)
+        init_joint = self.bodymodel.forward_kinematics(init_pose)[1].view(-1, 72)
+        
+        input = (input.unsqueeze(0), init_joint)
+        
+        pred_pose = self.forward(input, [input_lengths])
+        
+        return pred_pose.squeeze(0)
+
     def forward(self, batch, input_lengths=None):
         # forward the pose prediction model
         pred_pose, _, _ = self.pose(batch, input_lengths)
@@ -86,12 +108,11 @@ class Poser(L.LightningModule):
         joints = outputs['joints']
         target_joints = joints.view(B, S, -1)
 
-        # generate noise for target joints for beter robustness
-        noise = torch.randn(target_joints.size()).to(self.device) * 0.04 # gaussian noise with std = 0.04
-        noisy_joints = target_joints + noise
-
         # predict pose
-        pose_input = torch.cat((noisy_joints, imu_inputs), dim=-1)
+        pose_input = imu_inputs
+        
+        pose_input = (pose_input, target_joints[:, 0])
+        
         pose_p = self(pose_input, input_lengths)
 
         # compute pose loss
@@ -104,7 +125,6 @@ class Poser(L.LightningModule):
         # joint position loss
         if self.use_pos_loss:
             full_pose_p = self._reduced_global_to_full(pose_p)
-            
             joints_p = self.bodymodel.forward_kinematics(pose=full_pose_p.view(-1, 216))[1].view(B, S, -1)
             loss += self.loss(joints_p, target_joints)
 

@@ -72,20 +72,24 @@ class model_config:
     future_frames = 5
     total_frames = past_frames + future_frames
 
-    wheights = False
+    # height poser config
+    wheights = True
     ja_wheights = False
-    winit = False
-    physics = False
-    poser_wh = False
+    winit = True
+    poser_wh = True
     
-    jerk_loss = True
+    # mobile poser config
+    physics = False
+    
+    # loss config
+    jerk_loss = False
     jerk_loss_weight = 1e-5
     
     symmetry_loss = True
     sym_loss_weight = 1e-3
     
     combo_id = 'lw_rp'
-    name = 'mobileposer'
+    name = 'heightposer_poser'
 
 class amass:    
     """AMASS dataset information."""

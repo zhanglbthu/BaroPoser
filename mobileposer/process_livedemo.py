@@ -45,7 +45,7 @@ if __name__ == '__main__':
     print('Model loaded.')
     
     # load livedemo data
-    data_name = "0216_01"
+    data_name = "default"
     data_path = "data/livedemo/raw/" + data_name + ".pt"
     save_path = "data/livedemo/processed"
     os.makedirs(save_path, exist_ok=True)
@@ -65,7 +65,7 @@ if __name__ == '__main__':
     if model_config.winit:
         # 初始化24个关节的姿态，均为单位矩阵
         pose_t = torch.eye(3).repeat(1, 24, 1, 1).to(device)
-        pose_p, tran_p = model.predict(input, pose_t[0], tran=True)
+        pose_p, tran_p = model.predict_full(input, pose_t[0])
     else:
         online_results = [model.forward_online(f, tran=True) for f in torch.cat((input, input[-1].repeat(model_config.future_frames, 1)))]
         pose_p, tran_p = [torch.stack(_)[model_config.future_frames:] for _ in zip(*online_results)]

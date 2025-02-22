@@ -27,13 +27,11 @@ class FootContact(L.LightningModule):
         imu_set = amass.combos_mine[combo_id]
         imu_num = len(imu_set)
         imu_input_dim = imu_num * 12
-        if height:
-            self.input_dim = self.C.n_output_joints*3 + imu_input_dim + 2
-        else:
-            self.input_dim = self.C.n_output_joints*3 + imu_input_dim
+
+        self.input_dim = self.C.n_output_joints*3 + imu_input_dim 
 
         # model definitions
-        self.footcontact = RNN(self.input_dim, 2, 64)  # foot-ground probability model
+        self.footcontact = RNN(self.input_dim, 2, 64, bidirectional=False)  # foot-ground probability model
 
         # log input and output dimensions
         print(f"Input dimensions: {self.input_dim}")
@@ -64,10 +62,6 @@ class FootContact(L.LightningModule):
 
         # ground-truth foot contacts
         foot_contacts = outputs['foot_contacts']
-
-        # add noise to target joints for beter robustness
-        noise = torch.randn(target_joints.size()).to(self.device) * 0.04 # gaussian noise with std = 0.04
-        target_joints += noise
         
         # predict foot-ground contact probability
         tran_input = torch.cat((target_joints, imu_inputs), dim=-1)

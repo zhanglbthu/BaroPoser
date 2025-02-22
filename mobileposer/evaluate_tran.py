@@ -57,8 +57,7 @@ def evaluate_tran(model, dataset, save_dir=None, debug=False):
                 continue
             
             if model_config.winit:
-                _, joint_p, pose_p = model.predict(x, pose_t[0], detail=True)
-                tran_p = [model.forward_online(joints=j) for j in joint_p]
+                pose_p, tran_p = model.predict_full(x, pose_t[0])
                 
             else:
                 online_results = [model.forward_online(f, tran=True) for f in torch.cat((x, x[-1].repeat(model_config.future_frames, 1)))]

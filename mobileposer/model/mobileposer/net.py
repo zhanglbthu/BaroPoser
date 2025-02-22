@@ -146,7 +146,6 @@ class MobilePoserNet(L.LightningModule):
         # compute translation positions from predicted pose
         contact = contact[0][self.num_past_frames]
         lfoot_pos, rfoot_pos = joints[10], joints[11]
-        lfoot_pos, rfoot_pos = joints[10], joints[11]
         if contact[0] > contact[1]:
             contact_vel = self.last_lfoot_pos - lfoot_pos + self.gravity_velocity
         else:

@@ -100,6 +100,7 @@ def evaluate_pose(model, dataset, save_dir=None, debug=False):
     online_errs = []
     
     model.eval()
+    
     with torch.no_grad():
         for idx, (x, y, j) in enumerate(tqdm.tqdm(zip(xs, ys, js), total=len(xs))):
             # x: [N, 60], y: ([N, 144], [N, 3])
@@ -111,8 +112,8 @@ def evaluate_pose(model, dataset, save_dir=None, debug=False):
             vel_t = vel_t[:, amass.vel_joint].view(-1, len(amass.vel_joint)*3)
             
             pose_t = art.math.r6d_to_rotation_matrix(pose_t)
-            pose_t = pose_t.view(-1, 24, 3, 3)
-
+            pose_t = pose_t.view(-1, 24, 3, 3)  
+            
             if debug:
 
                 joint_p, joint_all_p, pose_p = model.predict(x, pose_t[0], debug=True)
@@ -126,7 +127,7 @@ def evaluate_pose(model, dataset, save_dir=None, debug=False):
                 continue
             
             if model_config.winit:
-                pose_p = model.predict(x, pose_t[0])
+                pose_p = model.predict(x, pose_t[0], poser_only=True)
             else:
                 online_results = [model.forward_online(f) for f in torch.cat((x, x[-1].repeat(model_config.future_frames, 1)))]
                 pose_p = torch.stack(online_results[model_config.future_frames:], dim=0)
