@@ -17,7 +17,19 @@ from mobileposer.config import model_config
 from process import _foot_ground_probs
 from mobileposer.articulate.model import ParametricModel
 
-body_model = ParametricModel(paths.smpl_file)
+body_model = ParametricModel(paths.smpl_file, device=model_config.device)
+vi_mask = torch.tensor([1961, 4362])
+
+def _syn_acc(v, smooth_n=4):
+    """Synthesize accelerations from vertex positions."""
+    mid = smooth_n // 2
+    acc = torch.stack([(v[i] + v[i + 2] - 2 * v[i + 1]) * 3600 for i in range(0, v.shape[0] - 2)])
+    acc = torch.cat((torch.zeros_like(acc[:1]), acc, torch.zeros_like(acc[:1])))
+    if mid != 0:
+        acc[smooth_n:-smooth_n] = torch.stack(
+            [(v[i] + v[i + smooth_n * 2] - 2 * v[i + smooth_n]) * 3600 / smooth_n ** 2
+             for i in range(0, v.shape[0] - smooth_n * 2)])
+    return acc
 
 @torch.no_grad()
 def evaluate_tran(model, dataset, save_dir=None, debug=False):
@@ -44,7 +56,7 @@ def evaluate_tran(model, dataset, save_dir=None, debug=False):
             
             pose_t = art.math.r6d_to_rotation_matrix(pose_t)
             pose_t = pose_t.view(-1, 24, 3, 3)
-
+            
             if debug:
                 joint_p, joint_all_p, pose_p = model.predict(x, pose_t[0], debug=True)
                 if save_dir:
@@ -62,6 +74,15 @@ def evaluate_tran(model, dataset, save_dir=None, debug=False):
             else:
                 online_results = [model.forward_online(f, tran=True) for f in torch.cat((x, x[-1].repeat(model_config.future_frames, 1)))]
                 pose_p, tran_p = [torch.stack(_)[model_config.future_frames:] for _ in zip(*online_results)]
+            
+            tran_t = tran_t.to(device)
+            _, _, vert_glb = body_model.forward_kinematics(pose_p, tran=tran_t, calc_mesh=True)
+            _, _, vert_local = body_model.forward_kinematics(pose_p, calc_mesh=True)
+            _, init_v = body_model.get_zero_pose_joint_and_vertex()
+            
+            h_local = vert_local[:, 4362, 1] - init_v[4362, 1]
+            h_glb = vert_glb[:, 4362, 1] - init_v[4362, 1]
+            tran_p[:, 1] = h_glb - h_local
             
             if True:
                 # compute gt move distance at every frame 
@@ -126,7 +147,7 @@ if __name__ == '__main__':
     fold = 'test'
     
     dataset = PoseDataset(fold=fold, evaluate=args.dataset, combo_id=model_config.combo_id, 
-                          wheights=model_config.wheights)
+                          wheights=model_config.data_heights)
     
     save_dir = Path('data') / 'eval' / model_config.name / model_config.combo_id / args.dataset
     if args.debug:

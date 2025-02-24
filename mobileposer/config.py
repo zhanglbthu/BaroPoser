@@ -72,14 +72,17 @@ class model_config:
     future_frames = 5
     total_frames = past_frames + future_frames
 
+    # data config
+    data_heights = True
+
     # height poser config
-    wheights = True
-    ja_wheights = False
     winit = True
+    
     poser_wh = True
+    vel_wh = True
     
     # mobile poser config
-    physics = False
+    physics = True
     
     # loss config
     jerk_loss = False
@@ -89,7 +92,7 @@ class model_config:
     sym_loss_weight = 1e-3
     
     combo_id = 'lw_rp'
-    name = 'heightposer_poser'
+    name = 'heightposer_poser_i2v_wh'
 
 class amass:    
     """AMASS dataset information."""
@@ -133,7 +136,7 @@ class amass:
     norm_joint = 0
     normalize_joints = [i for i in range(24) if i != 0]
     
-    vel_joint = [*range(24)]
+    vel_joint = [*range(1)]
 
 class datasets:
     """Dataset information."""

@@ -26,7 +26,7 @@ class Velocity(L.LightningModule):
         self.C = model_config
         self.hypers = train_hypers
         self.bodymodel = ParametricModel(paths.smpl_file, device=self.C.device)
-        self.input_size = 12 * self.imu_nums + self.C.n_output_joints*3
+        self.input_size = 12 * self.imu_nums + 2 if self.C.vel_wh else 12 * self.imu_nums
         self.vel_joint = amass.vel_joint
         self.output_size = len(self.vel_joint) * 3
         
@@ -91,7 +91,7 @@ class Velocity(L.LightningModule):
         imu_inputs, input_lengths = inputs
         outputs, _ = outputs
 
-        if model_config.wheights:
+        if model_config.data_heights and not model_config.vel_wh:
             imu_inputs = imu_inputs[:, :, :-2]
         
         # target joints
@@ -104,7 +104,7 @@ class Velocity(L.LightningModule):
 
         # predict joint velocity
         # change: add init vel
-        imu_inputs = torch.cat((target_joints, imu_inputs), dim=-1)
+        # imu_inputs = torch.cat((target_joints, imu_inputs), dim=-1)
         imu_inputs = (imu_inputs, target_vel[:, 0])
         pred_vel, _, _ = self.vel(imu_inputs, input_lengths)
         # loss = self.compute_loss(pred_vel, target_vel)

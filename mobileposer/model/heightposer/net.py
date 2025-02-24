@@ -115,13 +115,14 @@ class HeightPoserNet(L.LightningModule):
         
         pred_joint = self.bodymodel.forward_kinematics(pred_pose)[1].view(-1, 72)
         
-        if model_config.wheights:
+        if model_config.data_heights and not model_config.vel_wh:
             input = input[:, :-2]
         
         input_tran = torch.cat((pred_joint, input), dim=1)
 
-        pred_vel = self.velocity.predict_RNN(input_tran, torch.zeros(72).to(self.C.device))
+        pred_vel = self.velocity.predict_RNN(input, torch.zeros(3).to(self.C.device))
         
+        input_tran = input_tran[:, :-2]
         input_tran = input_tran.view(1, -1, 96)
         pred_contact = self.foot_contact(input_tran, [input_lengths])
         pred_contact = pred_contact.view(-1, 2)
@@ -129,7 +130,6 @@ class HeightPoserNet(L.LightningModule):
         pred_vel = pred_vel / (datasets.fps/amass.vel_scale)
         pred_root_vel = pred_vel[:, :3]
         
-        # translation = self.velocity_to_root_position(pred_root_vel)
         translation = []
         joints = pred_joint.view(-1, 24, 3)
         for i in range(input_lengths):
@@ -142,7 +142,7 @@ class HeightPoserNet(L.LightningModule):
             
             root_vel = pred_root_vel[i]
             weight = self._prob_to_weight(contact.max())
-            contact_vel = root_vel
+
             velocity = art.math.lerp(root_vel, contact_vel, weight)
             
             # remove penetration

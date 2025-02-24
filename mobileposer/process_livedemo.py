@@ -45,7 +45,7 @@ if __name__ == '__main__':
     print('Model loaded.')
     
     # load livedemo data
-    data_name = "default"
+    data_name = "stair_01"
     data_path = "data/livedemo/raw/" + data_name + ".pt"
     save_path = "data/livedemo/processed"
     os.makedirs(save_path, exist_ok=True)
