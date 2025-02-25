@@ -47,7 +47,7 @@ def evaluate_tran(model, dataset, save_dir=None, debug=False):
     with torch.no_grad():
         for idx, (x, y, j) in enumerate(tqdm.tqdm(zip(xs, ys, js), total=len(xs))):
             # x: [N, 60], y: ([N, 144], [N, 3])
-            
+
             model.reset()
 
             pose_t, tran_t = y

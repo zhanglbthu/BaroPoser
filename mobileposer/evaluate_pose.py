@@ -172,7 +172,7 @@ if __name__ == '__main__':
     fold = 'test'
     
     dataset = PoseDataset(fold=fold, evaluate=args.dataset, combo_id=model_config.combo_id, 
-                          wheights=model_config.wheights)
+                          wheights=model_config.data_heights)
     
     save_dir = Path('data') / 'eval' / model_config.name / model_config.combo_id / args.dataset
     if args.debug:

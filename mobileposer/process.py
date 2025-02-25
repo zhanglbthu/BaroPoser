@@ -20,14 +20,14 @@ vi_mask = torch.tensor([1961, 5424, 876, 4362, 411, 3021, 1176, 4662])
 ji_mask = torch.tensor([18, 19, 1, 2, 15, 0, 4, 5])
 body_model = ParametricModel(paths.smpl_file)
 
-def _syn_acc(v, smooth_n=4):
+def _syn_acc(v, smooth_n=4, fps=60):
     """Synthesize accelerations from vertex positions."""
     mid = smooth_n // 2
-    acc = torch.stack([(v[i] + v[i + 2] - 2 * v[i + 1]) * 3600 for i in range(0, v.shape[0] - 2)])
+    acc = torch.stack([(v[i] + v[i + 2] - 2 * v[i + 1]) * (fps ** 2) for i in range(0, v.shape[0] - 2)])
     acc = torch.cat((torch.zeros_like(acc[:1]), acc, torch.zeros_like(acc[:1])))
     if mid != 0:
         acc[smooth_n:-smooth_n] = torch.stack(
-            [(v[i] + v[i + smooth_n * 2] - 2 * v[i + smooth_n]) * 3600 / smooth_n ** 2
+            [(v[i] + v[i + smooth_n * 2] - 2 * v[i + smooth_n]) * (fps ** 2) / smooth_n ** 2
              for i in range(0, v.shape[0] - smooth_n * 2)])
     return acc
 
@@ -475,7 +475,8 @@ def process_imuposer(split: str="train"):
                 ground = _foot_min(joint)
 
                 accs.append(acc)    # N, 5, 3
-                oris.append(ori)    # N, 5, 3, 3
+                # accs.append(_syn_acc(vert[:, vi_mask], fps=25))  # N, 5, 3
+                oris.append(grot[:, ji_mask])    # N, 5, 3, 3
                 poses.append(pose)  # N, 24, 3, 3
                 trans.append(tran)  # N, 3
                 grounds.append(ground) # N, 1
@@ -491,7 +492,7 @@ def process_imuposer(split: str="train"):
         'heights': heights
     }
     data_path = paths.eval_dir / f"imuposer_{split}.pt"
-    # torch.save(data, data_path)
+    torch.save(data, data_path)
 
 def create_directories():
     paths.processed_datasets.mkdir(exist_ok=True, parents=True)
