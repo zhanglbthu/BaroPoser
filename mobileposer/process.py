@@ -332,8 +332,9 @@ def process_totalcapture_from_raw(heights: bool=False):
     # remove acceleration bias
     print("Removing acceleration bias and add height to the dataset")
     out_ground, out_heights = [], []
+    vori = []
     for iacc, pose, tran in tqdm(zip(accs, poses, trans)):
-        _, joint, vert = body_model.forward_kinematics(pose, tran=tran, calc_mesh=True)
+        grot, joint, vert = body_model.forward_kinematics(pose, tran=tran, calc_mesh=True)
         
         if heights:
             fc_probs = _foot_ground_probs(joint).clone()
@@ -343,7 +344,7 @@ def process_totalcapture_from_raw(heights: bool=False):
             
         out_ground.append(ground)
         out_heights.append(_get_heights(vert, ground, vi_mask))
-        
+        vori.append(grot[:, ji_mask])
         vacc = _syn_acc(vert[:, vi_mask])
         for imu_id in range(6):
             for i in range(3):
@@ -356,6 +357,7 @@ def process_totalcapture_from_raw(heights: bool=False):
         'tran': trans,
         'acc': accs,
         'ori': oris,
+        # 'ori': vori,
         'ground': out_ground,
         'heights': out_heights
     }
@@ -476,7 +478,7 @@ def process_imuposer(split: str="train"):
 
                 accs.append(acc)    # N, 5, 3
                 # accs.append(_syn_acc(vert[:, vi_mask], fps=25))  # N, 5, 3
-                oris.append(grot[:, ji_mask])    # N, 5, 3, 3
+                oris.append(ori)    # N, 5, 3, 3
                 poses.append(pose)  # N, 24, 3, 3
                 trans.append(tran)  # N, 3
                 grounds.append(ground) # N, 1
@@ -513,7 +515,7 @@ if __name__ == "__main__":
     if args.dataset == "amass":
         process_amass(heights=args.heights)
     elif args.dataset == "totalcapture":
-        process_totalcapture_raw(debug=True)
+        # process_totalcapture_raw(debug=True)
         process_totalcapture_from_raw(heights=args.heights)
     elif args.dataset == "imuposer":
         process_imuposer(split="train")
