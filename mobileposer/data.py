@@ -17,7 +17,6 @@ from mobileposer.helpers import *
 from utils.data_utils import *
 from config import amass
 
-
 class PoseDataset(Dataset):
     def __init__(self, fold: str='train', evaluate: str=None, finetune: str=None, 
                  combo_id: str=None, wheights: bool=False, winit: bool=False):

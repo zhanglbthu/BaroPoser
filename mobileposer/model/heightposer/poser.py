@@ -110,8 +110,12 @@ class Poser(L.LightningModule):
 
         # predict pose
         pose_input = imu_inputs
+
+        pose_input_noisy = pose_input.clone()
+        noise = torch.randn_like(pose_input_noisy[..., 6:24]) * self.C.noise_std
+        pose_input_noisy[..., 6:24] += noise        
         
-        pose_input = (pose_input, target_joints[:, 0])
+        pose_input = (pose_input_noisy, target_joints[:, 0])
         
         pose_p = self(pose_input, input_lengths)
 

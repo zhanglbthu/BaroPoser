@@ -81,6 +81,8 @@ class model_config:
     poser_wh = True
     vel_wh = True
     
+    noise_std = 0.1
+    
     # mobile poser config
     physics = True
     
@@ -92,7 +94,7 @@ class model_config:
     sym_loss_weight = 1e-3
     
     combo_id = 'lw_rp'
-    name = 'heightposer_poser_i2v_wh'
+    name = 'heightposer_woOri'
 
 class amass:    
     """AMASS dataset information."""
