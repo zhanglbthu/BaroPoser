@@ -29,7 +29,7 @@ class Poser(L.LightningModule):
         # input dimensions
         imu_set = amass.combos_mine[combo_id]
         imu_num = len(imu_set)
-        imu_input_dim = imu_num * 12
+        imu_input_dim = imu_num * 3
         
         if model_config.poser_wh:
             self.input_dim = imu_input_dim + 2
@@ -109,11 +109,14 @@ class Poser(L.LightningModule):
         target_joints = joints.view(B, S, -1)
 
         # predict pose
-        pose_input = imu_inputs
+        # pose_input = imu_inputs
 
-        pose_input_noisy = pose_input.clone()
-        noise = torch.randn_like(pose_input_noisy[..., 6:24]) * self.C.noise_std
-        pose_input_noisy[..., 6:24] += noise        
+        # pose_input_noisy = pose_input.clone()
+        # noise = torch.randn_like(pose_input_noisy[..., 6:24]) * self.C.noise_std
+        # pose_input_noisy[..., 6:24] += noise        
+        acc_input = imu_inputs[:, :, :6]
+        height_input = imu_inputs[:, :, -2:]
+        pose_input_noisy = torch.cat([acc_input, height_input], dim=2)
         
         pose_input = (pose_input_noisy, target_joints[:, 0])
         
