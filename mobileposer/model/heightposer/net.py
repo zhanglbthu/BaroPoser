@@ -110,9 +110,10 @@ class HeightPoserNet(L.LightningModule):
     def predict_full(self, input, init_pose):
         input_lengths = input.shape[0]
         
-        acc_input = input[:, :6]
-        height_input = input[:, -2:]
-        pose_input = torch.cat([acc_input, height_input], dim=-1)
+        # acc_input = input[:, :6]
+        # height_input = input[:, -2:]
+        # pose_input = torch.cat([acc_input, height_input], dim=-1)
+        pose_input = input
         
         pred_pose = self.pose.predict_RNN(pose_input, init_pose)
         pred_pose = self._reduced_global_to_full(pred_pose).view(-1, 24, 3, 3)
@@ -146,7 +147,6 @@ class HeightPoserNet(L.LightningModule):
             
             root_vel = pred_root_vel[i]
             weight = self._prob_to_weight(contact.max())
-
             velocity = art.math.lerp(root_vel, contact_vel, weight)
             
             # remove penetration
@@ -168,9 +168,9 @@ class HeightPoserNet(L.LightningModule):
         input_lengths = input.shape[0]
         
         if poser_only:
-            acc_input = input[:, :6]
-            height_input = input[:, -2:]
-            input = torch.cat([acc_input, height_input], dim=-1)
+            # acc_input = input[:, :6]
+            # height_input = input[:, -2:]
+            # input = torch.cat([acc_input, height_input], dim=-1)
             pred_pose = self.pose.predict_RNN(input, init_pose)
             pred_pose = self._reduced_global_to_full(pred_pose)
             return pred_pose

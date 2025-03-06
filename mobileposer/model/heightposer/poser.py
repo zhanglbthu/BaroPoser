@@ -4,13 +4,17 @@ import torch.nn as nn
 import lightning as L
 from torch.nn import functional as F
 import numpy as np
-
+import math
 from mobileposer.config import *
 from mobileposer.config import amass
 from mobileposer.utils.model_utils import reduced_pose_to_full
 import mobileposer.articulate as art
 from mobileposer.models.rnn import RNN
 from model.base_model.rnn import RNNWithInit
+from utils.data_utils import _foot_min, _get_heights
+
+vi_mask = torch.tensor([1961, 5424, 876, 4362, 411, 3021, 1176, 4662])
+ji_mask = torch.tensor([18, 19, 1, 2, 15, 0, 4, 5])
 
 class Poser(L.LightningModule):
     """
@@ -29,7 +33,7 @@ class Poser(L.LightningModule):
         # input dimensions
         imu_set = amass.combos_mine[combo_id]
         imu_num = len(imu_set)
-        imu_input_dim = imu_num * 3
+        imu_input_dim = imu_num * 12
         
         if model_config.poser_wh:
             self.input_dim = imu_input_dim + 2
@@ -94,6 +98,69 @@ class Poser(L.LightningModule):
         pred_pose, _, _ = self.pose(batch, input_lengths)
         return pred_pose
 
+    def hat(self, v):
+        """
+        将旋转向量 v (shape: [..., 3]) 转换为对应的 3x3 反对称矩阵.
+        """
+        zero = torch.zeros_like(v[..., 0])
+        M = torch.stack([
+            torch.stack([zero, -v[..., 2], v[..., 1]], dim=-1),
+            torch.stack([v[..., 2], zero, -v[..., 0]], dim=-1),
+            torch.stack([-v[..., 1], v[..., 0], zero], dim=-1)
+        ], dim=-2)
+        return M
+
+    def rodrigues(self, omega):
+        """
+        将旋转向量 omega (shape: [..., 3]) 转换为旋转矩阵 (shape: [..., 3, 3])
+        采用 Rodrigues 公式.
+        """
+        theta = torch.norm(omega, dim=-1, keepdim=True)  # shape: [..., 1]
+        I = torch.eye(3, device=omega.device).expand(omega.shape[:-1] + (3, 3))
+        # 避免除零，利用 theta+1e-8
+        u = omega / (theta + 1e-8)
+        u_hat = self.hat(u)
+        cos_theta = torch.cos(theta).unsqueeze(-1)
+        sin_theta = torch.sin(theta).unsqueeze(-1)
+
+        R = I + sin_theta * u_hat + (1 - cos_theta) * (u_hat @ u_hat)
+        return R
+
+    def euler2rot(self, euler_angles):
+        theta_z = euler_angles[..., 0]
+        theta_y = euler_angles[..., 1]
+        theta_x = euler_angles[..., 2]
+
+        # 计算对应的余弦和正弦值
+        cosz, sinz = torch.cos(theta_z), torch.sin(theta_z)
+        cosy, siny = torch.cos(theta_y), torch.sin(theta_y)
+        cosx, sinx = torch.cos(theta_x), torch.sin(theta_x)
+
+        # 构造绕 Z 轴旋转矩阵 Rz，shape: [B, S, 3, 3]
+        Rz = torch.stack([
+            torch.stack([cosz, -sinz, torch.zeros_like(cosz)], dim=-1),
+            torch.stack([sinz,  cosz, torch.zeros_like(cosz)], dim=-1),
+            torch.stack([torch.zeros_like(cosz), torch.zeros_like(cosz), torch.ones_like(cosz)], dim=-1)
+        ], dim=-2)
+
+        # 构造绕 Y 轴旋转矩阵 Ry，shape: [B, S, 3, 3]
+        Ry = torch.stack([
+            torch.stack([cosy, torch.zeros_like(cosy), siny], dim=-1),
+            torch.stack([torch.zeros_like(cosy), torch.ones_like(cosy), torch.zeros_like(cosy)], dim=-1),
+            torch.stack([-siny, torch.zeros_like(cosy), cosy], dim=-1)
+        ], dim=-2)
+
+        # 构造绕 X 轴旋转矩阵 Rx，shape: [B, S, 3, 3]
+        Rx = torch.stack([
+            torch.stack([torch.ones_like(cosx), torch.zeros_like(cosx), torch.zeros_like(cosx)], dim=-1),
+            torch.stack([torch.zeros_like(cosx), cosx, -sinx], dim=-1),
+            torch.stack([torch.zeros_like(cosx), sinx, cosx], dim=-1)
+        ], dim=-2)
+
+        # 按ZYX顺序计算最终旋转矩阵： R = Rz @ Ry @ Rx
+        R = torch.matmul(torch.matmul(Rz, Ry), Rx)  # 结果 shape: [B, S, 3, 3]
+        return R
+
     def shared_step(self, batch):
         # unpack data
         inputs, outputs = batch
@@ -109,14 +176,41 @@ class Poser(L.LightningModule):
         target_joints = joints.view(B, S, -1)
 
         # predict pose
-        # pose_input = imu_inputs
+        pose_input = imu_inputs
 
-        # pose_input_noisy = pose_input.clone()
-        # noise = torch.randn_like(pose_input_noisy[..., 6:24]) * self.C.noise_std
-        # pose_input_noisy[..., 6:24] += noise        
-        acc_input = imu_inputs[:, :, :6]
-        height_input = imu_inputs[:, :, -2:]
-        pose_input_noisy = torch.cat([acc_input, height_input], dim=2)
+        pose_input_noisy = pose_input.clone()
+        rot = pose_input_noisy[..., 15:24].view(B, S, 1, 3, 3)   # shape: [B, S, 18]
+        
+        # axis = torch.tensor([0.80, -0.35, -0.35], device=self.device, dtype=torch.float32)
+        # axis = axis / torch.norm(axis)
+        # angle_rad = 41 * math.pi / 180.0
+        # rot_vec = axis * angle_rad
+        # noise_vec = rot_vec.view(1, 1, 1, 3).expand(B, S, 1, 3)
+        
+        # mean_noise = torch.tensor([7.77069, -5.950647, -3.7782857], device='cuda', dtype=torch.float32)
+        # cov_noise = torch.tensor([[95.28448462, 5.07967355, -1.96292383],
+        #                         [5.07967355, 45.90002102, 14.11876013],
+        #                         [-1.96292383, 14.11876013, 46.66259387]], device='cuda', dtype=torch.float32)
+        
+        # mvn = torch.distributions.MultivariateNormal(mean_noise, covariance_matrix=cov_noise)
+        # samples = mvn.sample((B, S))  # 结果 shape: [B, S, 3]
+        # noise_vec = samples.unsqueeze(2)
+        
+        # R_noise = self.rodrigues(noise_vec)
+        
+        # 设定欧拉角的均值和协方差（单位：弧度）
+        # mean_euler = torch.tensor([0.0, -0.2, 0.0], device='cuda')
+        # cov_euler = torch.tensor([[0.05, 0.0, 0.0],
+        #                         [0.0, 0.05, 0.0],
+        #                         [0.0, 0.0, 0.05]], device='cuda')
+        
+        # euler_angles = torch.distributions.MultivariateNormal(mean_euler, covariance_matrix=cov_euler).sample((B, S))
+        # R_noise = self.euler2rot(euler_angles=euler_angles).unsqueeze(2)
+        
+        # rot_noisy = torch.matmul(rot, R_noise).view(B, S, 9)
+        rot_noisy = torch.matmul(rot, R_noise).view(B, S, 9)
+
+        pose_input_noisy[..., 15:24] = rot_noisy      
         
         pose_input = (pose_input_noisy, target_joints[:, 0])
         

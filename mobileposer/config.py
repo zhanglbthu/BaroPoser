@@ -11,7 +11,6 @@ class train_hypers:
     device = 1
     lr = 3e-4
 
-
 class finetune_hypers:
     """Hyperparamters for finetuning."""
     batch_size = 32
@@ -81,7 +80,10 @@ class model_config:
     poser_wh = True
     vel_wh = True
     
-    noise_std = 0.1
+    height_loss = True
+    height_loss_weight = 1e-3
+    
+    noise_std = 0.01
     
     # mobile poser config
     physics = True
@@ -94,7 +96,7 @@ class model_config:
     sym_loss_weight = 1e-3
     
     combo_id = 'lw_rp'
-    name = 'heightposer_woOri'
+    name = 'heightposer_noise_euler'
 
 class amass:    
     """AMASS dataset information."""
