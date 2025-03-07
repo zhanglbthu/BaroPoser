@@ -181,33 +181,21 @@ class Poser(L.LightningModule):
         pose_input_noisy = pose_input.clone()
         rot = pose_input_noisy[..., 15:24].view(B, S, 1, 3, 3)   # shape: [B, S, 18]
         
-        # axis = torch.tensor([0.80, -0.35, -0.35], device=self.device, dtype=torch.float32)
-        # axis = axis / torch.norm(axis)
-        # angle_rad = 41 * math.pi / 180.0
-        # rot_vec = axis * angle_rad
-        # noise_vec = rot_vec.view(1, 1, 1, 3).expand(B, S, 1, 3)
+        # TODO: add rotation noise
+        gt_pose_6d = target_pose.view(-1, 24, 6).clone()
+        gt_pose = art.math.r6d_to_rotation_matrix(gt_pose_6d).view(-1, 24, 3, 3)
+
+        gt_pose_local = self.global_to_local_pose(gt_pose)
+        gt_pose_local_thigh = gt_pose_local[:, 2]
+        gt_pose_local_euler = art.math.rotation_matrix_to_euler_angle(gt_pose_local_thigh).view(-1, 3)
+
+        noise_euler = gt_pose_local_euler.clone()
+        # TODO: tune noise level
+        noise_euler[:, 0] = - noise_euler[:, 0] * 0.5
+        noise_euler[:, 1] = 0.0
+        noise_euler[:, 2] = - noise_euler[:, 2] * 0.5
+        R_noise = art.math.euler_angle_to_rotation_matrix(noise_euler).view(B, S, 1, 3, 3)
         
-        # mean_noise = torch.tensor([7.77069, -5.950647, -3.7782857], device='cuda', dtype=torch.float32)
-        # cov_noise = torch.tensor([[95.28448462, 5.07967355, -1.96292383],
-        #                         [5.07967355, 45.90002102, 14.11876013],
-        #                         [-1.96292383, 14.11876013, 46.66259387]], device='cuda', dtype=torch.float32)
-        
-        # mvn = torch.distributions.MultivariateNormal(mean_noise, covariance_matrix=cov_noise)
-        # samples = mvn.sample((B, S))  # 结果 shape: [B, S, 3]
-        # noise_vec = samples.unsqueeze(2)
-        
-        # R_noise = self.rodrigues(noise_vec)
-        
-        # 设定欧拉角的均值和协方差（单位：弧度）
-        # mean_euler = torch.tensor([0.0, -0.2, 0.0], device='cuda')
-        # cov_euler = torch.tensor([[0.05, 0.0, 0.0],
-        #                         [0.0, 0.05, 0.0],
-        #                         [0.0, 0.0, 0.05]], device='cuda')
-        
-        # euler_angles = torch.distributions.MultivariateNormal(mean_euler, covariance_matrix=cov_euler).sample((B, S))
-        # R_noise = self.euler2rot(euler_angles=euler_angles).unsqueeze(2)
-        
-        # rot_noisy = torch.matmul(rot, R_noise).view(B, S, 9)
         rot_noisy = torch.matmul(rot, R_noise).view(B, S, 9)
 
         pose_input_noisy[..., 15:24] = rot_noisy      
