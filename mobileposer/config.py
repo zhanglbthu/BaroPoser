@@ -96,7 +96,7 @@ class model_config:
     sym_loss_weight = 1e-3
     
     combo_id = 'lw_rp'
-    name = 'heightposer_noise_euler+'
+    name = 'heightposer_noise_baseline'
 
 class amass:    
     """AMASS dataset information."""

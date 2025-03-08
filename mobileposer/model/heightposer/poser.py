@@ -189,11 +189,16 @@ class Poser(L.LightningModule):
         gt_pose_local_thigh = gt_pose_local[:, 2]
         gt_pose_local_euler = art.math.rotation_matrix_to_euler_angle(gt_pose_local_thigh).view(-1, 3)
 
-        noise_euler = gt_pose_local_euler.clone()
+        noise_euler = gt_pose_local_euler.clone().view(B, S, 3)
         # TODO: tune noise level
-        noise_euler[:, 0] = - noise_euler[:, 0] * 0.5
-        noise_euler[:, 1] = 0.0
-        noise_euler[:, 2] = - noise_euler[:, 2] * 0.5
+        threshold = torch.tensor([0.1], device=gt_pose_local_euler.device)
+        rand_tensor = torch.rand(B, 1, device=gt_pose_local_euler.device)
+        mask = (rand_tensor < threshold).float().view(B, 1, 1)
+        
+        noise_euler[:, :, 0] = 0.0
+        noise_euler[:, :, 1] = 0.0
+        noise_euler[:, :, 2] = 0.0
+
         R_noise = art.math.euler_angle_to_rotation_matrix(noise_euler).view(B, S, 1, 3, 3)
         
         rot_noisy = torch.matmul(rot, R_noise).view(B, S, 9)
