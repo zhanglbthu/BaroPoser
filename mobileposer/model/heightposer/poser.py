@@ -9,7 +9,6 @@ from mobileposer.config import *
 from mobileposer.config import amass
 from mobileposer.utils.model_utils import reduced_pose_to_full
 import mobileposer.articulate as art
-from mobileposer.models.rnn import RNN
 from model.base_model.rnn import RNNWithInit
 from utils.data_utils import _foot_min, _get_heights
 
@@ -98,70 +97,7 @@ class Poser(L.LightningModule):
         pred_pose, _, _ = self.pose(batch, input_lengths)
         return pred_pose
 
-    def hat(self, v):
-        """
-        将旋转向量 v (shape: [..., 3]) 转换为对应的 3x3 反对称矩阵.
-        """
-        zero = torch.zeros_like(v[..., 0])
-        M = torch.stack([
-            torch.stack([zero, -v[..., 2], v[..., 1]], dim=-1),
-            torch.stack([v[..., 2], zero, -v[..., 0]], dim=-1),
-            torch.stack([-v[..., 1], v[..., 0], zero], dim=-1)
-        ], dim=-2)
-        return M
-
-    def rodrigues(self, omega):
-        """
-        将旋转向量 omega (shape: [..., 3]) 转换为旋转矩阵 (shape: [..., 3, 3])
-        采用 Rodrigues 公式.
-        """
-        theta = torch.norm(omega, dim=-1, keepdim=True)  # shape: [..., 1]
-        I = torch.eye(3, device=omega.device).expand(omega.shape[:-1] + (3, 3))
-        # 避免除零，利用 theta+1e-8
-        u = omega / (theta + 1e-8)
-        u_hat = self.hat(u)
-        cos_theta = torch.cos(theta).unsqueeze(-1)
-        sin_theta = torch.sin(theta).unsqueeze(-1)
-
-        R = I + sin_theta * u_hat + (1 - cos_theta) * (u_hat @ u_hat)
-        return R
-
-    def euler2rot(self, euler_angles):
-        theta_z = euler_angles[..., 0]
-        theta_y = euler_angles[..., 1]
-        theta_x = euler_angles[..., 2]
-
-        # 计算对应的余弦和正弦值
-        cosz, sinz = torch.cos(theta_z), torch.sin(theta_z)
-        cosy, siny = torch.cos(theta_y), torch.sin(theta_y)
-        cosx, sinx = torch.cos(theta_x), torch.sin(theta_x)
-
-        # 构造绕 Z 轴旋转矩阵 Rz，shape: [B, S, 3, 3]
-        Rz = torch.stack([
-            torch.stack([cosz, -sinz, torch.zeros_like(cosz)], dim=-1),
-            torch.stack([sinz,  cosz, torch.zeros_like(cosz)], dim=-1),
-            torch.stack([torch.zeros_like(cosz), torch.zeros_like(cosz), torch.ones_like(cosz)], dim=-1)
-        ], dim=-2)
-
-        # 构造绕 Y 轴旋转矩阵 Ry，shape: [B, S, 3, 3]
-        Ry = torch.stack([
-            torch.stack([cosy, torch.zeros_like(cosy), siny], dim=-1),
-            torch.stack([torch.zeros_like(cosy), torch.ones_like(cosy), torch.zeros_like(cosy)], dim=-1),
-            torch.stack([-siny, torch.zeros_like(cosy), cosy], dim=-1)
-        ], dim=-2)
-
-        # 构造绕 X 轴旋转矩阵 Rx，shape: [B, S, 3, 3]
-        Rx = torch.stack([
-            torch.stack([torch.ones_like(cosx), torch.zeros_like(cosx), torch.zeros_like(cosx)], dim=-1),
-            torch.stack([torch.zeros_like(cosx), cosx, -sinx], dim=-1),
-            torch.stack([torch.zeros_like(cosx), sinx, cosx], dim=-1)
-        ], dim=-2)
-
-        # 按ZYX顺序计算最终旋转矩阵： R = Rz @ Ry @ Rx
-        R = torch.matmul(torch.matmul(Rz, Ry), Rx)  # 结果 shape: [B, S, 3, 3]
-        return R
-
-    def shared_step(self, batch):
+    def shared_step(self, batch, add_noise=False):
         # unpack data
         inputs, outputs = batch
         imu_inputs, input_lengths = inputs
@@ -178,34 +114,31 @@ class Poser(L.LightningModule):
         # predict pose
         pose_input = imu_inputs
 
-        pose_input_noisy = pose_input.clone()
-        rot = pose_input_noisy[..., 15:24].view(B, S, 1, 3, 3)   # shape: [B, S, 18]
-        
-        # TODO: add rotation noise
-        gt_pose_6d = target_pose.view(-1, 24, 6).clone()
-        gt_pose = art.math.r6d_to_rotation_matrix(gt_pose_6d).view(-1, 24, 3, 3)
+        if add_noise:
+            pose_input_noisy = pose_input.clone()
+            rot = pose_input_noisy[..., 6:24].view(B, S, 2, 3, 3)   # shape: [B, S, 18]
+            
+            axis_angle_thigh = torch.randn(B, 1, 3).to(self.device) * self.C.noise_std
+            axis_angle_wrist = torch.randn(B, 1, 3).to(self.device) * self.C.noise_std
+            
+            wrist_rot = rot[:, :, 0].view(B, S, 3, 3)
+            thigh_rot = rot[:, :, 1].view(B, S, 3, 3)
+            
+            wrist_rot_noisy = torch.matmul(wrist_rot, art.math.axis_angle_to_rotation_matrix(axis_angle_wrist).view(B, 1, 3, 3)).view(B, S, 9)
+            thigh_rot_noisy = torch.matmul(thigh_rot, art.math.axis_angle_to_rotation_matrix(axis_angle_thigh).view(B, 1, 3, 3)).view(B, S, 9)
+            
+            rot_noisy = torch.cat([wrist_rot_noisy, thigh_rot_noisy], dim=-1)
 
-        gt_pose_local = self.global_to_local_pose(gt_pose)
-        gt_pose_local_thigh = gt_pose_local[:, 2]
-        gt_pose_local_euler = art.math.rotation_matrix_to_euler_angle(gt_pose_local_thigh).view(-1, 3)
-
-        noise_euler = gt_pose_local_euler.clone().view(B, S, 3)
-        # TODO: tune noise level
-        threshold = torch.tensor([0.1], device=gt_pose_local_euler.device)
-        rand_tensor = torch.rand(B, 1, device=gt_pose_local_euler.device)
-        mask = (rand_tensor < threshold).float().view(B, 1, 1)
+            pose_input_noisy[..., 6:24] = rot_noisy
+            
+            # # add nosie to height
+            # height = pose_input_noisy[..., 24:26]
+            # height_noisy = height + torch.randn(B, S, 2).to(self.device) * 0.01
+            # pose_input_noisy[..., 24:26] = height_noisy
+            
+            pose_input = pose_input_noisy      
         
-        noise_euler[:, :, 0] = 0.0
-        noise_euler[:, :, 1] = 0.0
-        noise_euler[:, :, 2] = 0.0
-
-        R_noise = art.math.euler_angle_to_rotation_matrix(noise_euler).view(B, S, 1, 3, 3)
-        
-        rot_noisy = torch.matmul(rot, R_noise).view(B, S, 9)
-
-        pose_input_noisy[..., 15:24] = rot_noisy      
-        
-        pose_input = (pose_input_noisy, target_joints[:, 0])
+        pose_input = (pose_input, target_joints[:, 0])
         
         pose_p = self(pose_input, input_lengths)
 
@@ -235,13 +168,13 @@ class Poser(L.LightningModule):
         return l1_norm.sum(dim=1).mean() 
 
     def training_step(self, batch, batch_idx):
-        loss = self.shared_step(batch)
+        loss = self.shared_step(batch, add_noise=True)
         self.log("training_step_loss", loss.item(), batch_size=self.hypers.batch_size)
         self.training_step_loss.append(loss.item())
         return {"loss": loss}
     
     def validation_step(self, batch, batch_idx):
-        loss = self.shared_step(batch)
+        loss = self.shared_step(batch, add_noise=False)
         self.log("validation_step_loss", loss.item(), batch_size=self.hypers.batch_size)
         self.validation_step_loss.append(loss.item())
         return {"loss": loss}

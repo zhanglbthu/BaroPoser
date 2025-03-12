@@ -11,6 +11,7 @@ __all__ = ['BinaryConfusionMatrixEvaluator', 'BinaryClassificationErrorEvaluator
 from .model import ParametricModel
 from .math import *
 import torch
+from config import joint_set
 
 
 class BasePoseEvaluator:
@@ -329,14 +330,14 @@ class FullMotionEvaluator(BasePoseEvaluator):
         mje = je[:, self.joint_mask] if self.joint_mask is not None else torch.zeros(1)     # N, mJ
         mlae = lae[:, self.joint_mask] if self.joint_mask is not None else torch.zeros(1)   # N, mJ
         mgae = gae[:, self.joint_mask] if self.joint_mask is not None else torch.zeros(1)   # N, mJ
-
-        return torch.tensor([[je.mean(),   je.std(dim=0).mean()],
-                             [ve.mean(),   ve.std(dim=0).mean()],
+        
+        return torch.tensor([[je.mean(),   je.std(dim=0).mean()],    # joint position error
+                             [ve.mean(),   ve.std(dim=0).mean()],    # mesh error 
                              [lae.mean(),  lae.std(dim=0).mean()],
-                             [gae.mean(),  gae.std(dim=0).mean()],
+                             [gae.mean(),  gae.std(dim=0).mean()],   # angular error
                              [jkp.mean(),  jkp.std(dim=0).mean()],
                              [jkt.mean(),  jkt.std(dim=0).mean()],
                              [te.mean(),   te.std(dim=0).mean()],
                              [mje.mean(),  mje.std(dim=0).mean()],
                              [mlae.mean(), mlae.std(dim=0).mean()],
-                             [mgae.mean(), mgae.std(dim=0).mean()]]) #SIP
+                             [mgae.mean(), mgae.std(dim=0).mean()]]) # SIP

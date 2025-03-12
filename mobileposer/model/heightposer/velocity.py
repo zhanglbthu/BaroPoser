@@ -7,8 +7,9 @@ import lightning as L
 from torch.optim.lr_scheduler import StepLR 
 
 from mobileposer.articulate.model import ParametricModel
-from model.base_model.rnn import RNN, RNNWithInit
+from model.base_model.rnn import RNNWithInit
 from mobileposer.config import *
+import mobileposer.articulate as art
 
 class Velocity(L.LightningModule):
     """
@@ -85,7 +86,7 @@ class Velocity(L.LightningModule):
         vel, _, self.rnn_state = self.vel(batch, input_lengths, self.rnn_state)
         return vel
     
-    def shared_step(self, batch):
+    def shared_step(self, batch, add_noise=False):
         # unpack data
         inputs, outputs = batch
         imu_inputs, input_lengths = inputs
@@ -104,10 +105,28 @@ class Velocity(L.LightningModule):
 
         # predict joint velocity
         # change: add init vel
-        # imu_inputs = torch.cat((target_joints, imu_inputs), dim=-1)
+        # change: add noise
+        if add_noise:
+            imu_inputs_noisy = imu_inputs.clone()
+            rot = imu_inputs_noisy[..., 6:24].view(B, S, 2, 3, 3)   # shape: [B, S, 18]
+            
+            axis_angle_thigh = torch.randn(B, 1, 3).to(self.device) * self.C.noise_std
+            axis_angle_wrist = torch.randn(B, 1, 3).to(self.device) * self.C.noise_std
+            
+            wrist_rot = rot[:, :, 0].view(B, S, 3, 3)
+            thigh_rot = rot[:, :, 1].view(B, S, 3, 3)
+            
+            wrist_rot_noisy = torch.matmul(wrist_rot, art.math.axis_angle_to_rotation_matrix(axis_angle_wrist).view(B, 1, 3, 3)).view(B, S, 9)
+            thigh_rot_noisy = torch.matmul(thigh_rot, art.math.axis_angle_to_rotation_matrix(axis_angle_thigh).view(B, 1, 3, 3)).view(B, S, 9)
+            
+            rot_noisy = torch.cat([wrist_rot_noisy, thigh_rot_noisy], dim=-1)
+
+            imu_inputs_noisy[..., 6:24] = rot_noisy
+            
+            imu_inputs = imu_inputs_noisy 
+        
         imu_inputs = (imu_inputs, target_vel[:, 0])
         pred_vel, _, _ = self.vel(imu_inputs, input_lengths)
-        # loss = self.compute_loss(pred_vel, target_vel)
         loss = self.loss(pred_vel, target_vel)
 
         return loss
@@ -127,7 +146,7 @@ class Velocity(L.LightningModule):
         return loss
 
     def training_step(self, batch, batch_idx):
-        loss = self.shared_step(batch)
+        loss = self.shared_step(batch, add_noise=True)
         self.log("training_step_loss", loss.item(), batch_size=self.hypers.batch_size)
         self.training_step_loss.append(loss.item())
         return {"loss": loss}

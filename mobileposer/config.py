@@ -77,13 +77,10 @@ class model_config:
     # height poser config
     winit = True
     
-    poser_wh = True
+    poser_wh =  True
     vel_wh = True
     
-    height_loss = True
-    height_loss_weight = 1e-3
-    
-    noise_std = 0.01
+    noise_std = 0.1
     
     # mobile poser config
     physics = True
@@ -96,7 +93,7 @@ class model_config:
     sym_loss_weight = 1e-3
     
     combo_id = 'lw_rp'
-    name = 'heightposer_noise_baseline'
+    name = 'heightposer_noise0.1'
 
 class amass:    
     """AMASS dataset information."""
@@ -202,7 +199,9 @@ class joint_set:
 
     full = list(range(0, 24))
     reduced = [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 14, 15, 16, 17, 18, 19]
-    ignored = [0, 7, 8, 10, 11, 20, 21, 22, 23]
+    ignored = [7, 8, 10, 11, 20, 21, 22, 23]
+    
+    eval_select = [2, 3, 5, 6, 9, 13, 16, 18]
     
     pred = [0, 2, 3, 5, 6, 8, 9, 11, 13, 16, 18, 20, 22]
     rest = [1, 4, 7, 10, 12, 14, 15, 17, 19, 21, 23]

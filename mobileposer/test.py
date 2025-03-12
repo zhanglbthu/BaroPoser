@@ -2,8 +2,9 @@ import re
 import pandas as pd
 
 # 定义模型名称和日志文件路径
-model_name = 'heightposer_noise_baseline'
-log_path = 'data/eval/' + model_name + '/' +'lw_rp/totalcapture/log.txt'
+model_name = 'heightposer_noise+'
+dataset_name = 'imuposer'
+log_path = 'data/eval/' + model_name + '/' +'lw_rp' + '/' + dataset_name + '/log.txt'
 
 # 用于存放提取到的数值
 results = []
@@ -20,4 +21,4 @@ with open(log_path, 'r') as f:
 # 将结果转换成DataFrame的一列
 df = pd.DataFrame(results, columns=['Mesh_Error'])
 # save to txt
-df.to_csv('data/eval/' + model_name + '/lw_rp/totalcapture/mesh_error.txt', index=False)
+df.to_csv('data/eval/' + model_name + '/lw_rp/' + dataset_name + '/mesh_error.txt', index=False)

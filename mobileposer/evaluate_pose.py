@@ -17,7 +17,7 @@ from mobileposer.config import model_config
 from process import _foot_ground_probs
 from mobileposer.articulate.model import ParametricModel
 
-body_model = ParametricModel(paths.smpl_file)
+body_model = ParametricModel(paths.smpl_file, device=model_config.device)
 
 class PoseEvaluator:
     def __init__(self):
@@ -54,7 +54,7 @@ class PoseEvaluator:
             'Jitter Error (100m/s^3)', 
             'Distance Error (cm)'
         ]
-
+        
         # 找出最长的指标名，以便统一对齐
         max_len = max(len(name) for name in metric_names)
 
@@ -85,8 +85,53 @@ def evaluate_joint(joint_t, joint_p):
     
     return je.mean()
 
+def edit_pose(pose_p):
+    pose = pose_p.clone().view(-1, 24, 3, 3)
+    _, joint = body_model.forward_kinematics(pose=pose)
+    
+    _, joint_init = body_model.forward_kinematics(pose=pose[0].unsqueeze(0))
+    joint_init = joint_init[0]
+    N = pose.shape[0]
+    
+    vel_threshold = 1e-5
+    init_threshold = 5e-3
+    
+    static = torch.zeros((N, 1), dtype=torch.bool, device=pose.device)    
+    S = np.diag([1, -1, -1])
+    S = torch.tensor(S, dtype=torch.float32, device=pose.device)
+    
+    start = False
+    
+    for i in range(1, N):
+        last_larm = joint[i-1, joint_set.larm].clone().view(-1)
+        last_rarm = joint[i-1, joint_set.rarm].clone().view(-1)
+        cur_larm = joint[i, joint_set.larm].clone().view(-1)
+        cur_rarm = joint[i, joint_set.rarm].clone().view(-1)
+        init_larm = joint_init[joint_set.larm].clone().view(-1)
+        init_rarm = joint_init[joint_set.rarm].clone().view(-1)
+        
+        vel_err = torch.mean((last_larm - cur_larm) ** 2)
+        init_err = torch.mean((init_larm - cur_larm) ** 2)
+        rarm_err = torch.mean((init_rarm - cur_rarm) ** 2)
+
+        if vel_err > vel_threshold and init_err > init_threshold:
+            start = True
+            # pose[i, joint_set.rarm] = - pose[i, joint_set.larm].clone()
+        
+        if vel_err < vel_threshold and init_err < init_threshold:
+            static[i] = True
+            
+        # 如果过去一段时间内，static为True，则将当前帧的右臂姿态设置为左臂姿态的镜像
+        if i > 10 and torch.all(static[i-10:i]):
+            start = False
+            
+        if not start:
+            pose[i, joint_set.rarm] = torch.matmul(S, torch.matmul(pose[i, joint_set.larm], S))
+            
+    return pose
+
 @torch.no_grad()
-def evaluate_pose(model, dataset, save_dir=None, debug=False):
+def evaluate_pose(model, dataset, save_dir=None, debug=False, processed=None):
     # specify device
     device = model_config.device
 
@@ -100,7 +145,7 @@ def evaluate_pose(model, dataset, save_dir=None, debug=False):
     online_errs = []
     
     model.eval()
-    
+      
     with torch.no_grad():
         for idx, (x, y, j) in enumerate(tqdm.tqdm(zip(xs, ys, js), total=len(xs))):
             # x: [N, 60], y: ([N, 144], [N, 3])
@@ -126,15 +171,18 @@ def evaluate_pose(model, dataset, save_dir=None, debug=False):
                                 save_dir / f"{idx}.pt")
                 continue
             
-            if model_config.winit:
-                pose_p = model.predict(x, pose_t[0], poser_only=True)
+            if processed:
+                pose_p = torch.load(processed + '/' + f"{idx}.pt")['pose_p'].to(device).view(-1, 24, 3, 3)
             else:
-                online_results = [model.forward_online(f) for f in torch.cat((x, x[-1].repeat(model_config.future_frames, 1)))]
-                pose_p = torch.stack(online_results[model_config.future_frames:], dim=0)
+                if model_config.winit:
+                    pose_p = model.predict(x, pose_t[0], poser_only=True)
+                else:
+                    online_results = [model.forward_online(f) for f in torch.cat((x, x[-1].repeat(model_config.future_frames, 1)))]
+                    pose_p = torch.stack(online_results[model_config.future_frames:], dim=0)
             
             online_errs.append(evaluator.eval(pose_p, pose_t))
             
-            if save_dir:
+            if save_dir and not processed:
                 torch.save({'pose_t': pose_t, 
                             'pose_p': pose_p, 
                             },
@@ -145,13 +193,18 @@ def evaluate_pose(model, dataset, save_dir=None, debug=False):
         
         log_path = save_dir / 'log.txt'
         
+        # 清空原有内容
+        with open(log_path, 'w', encoding='utf-8') as f:
+            pass
+        
         for online_err in online_errs:
             with open(log_path, 'a', encoding='utf-8') as f:
                 evaluator.print_single(online_err, file=f)
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--model', type=str, default='data/checkpoints/imuposer_local/lw_rp_h/base_model.pth')
+    parser.add_argument('--model', type=str, default='data/checkpoints/imuposer_local/lw_rp/base_model.pth')
+    parser.add_argument('--processed', type=str, default=None)
     parser.add_argument('--dataset', type=str, default='dip')
     parser.add_argument('--name', type=str, default='default')
     parser.add_argument('--combo_id', type=str, default='lw_rp_h')
@@ -183,4 +236,4 @@ if __name__ == '__main__':
     # evaluate pose
     print(f"Starting evaluation: {args.dataset.capitalize()}")
     # evaluate_pose(model, dataset, evaluate_tran=True, save_dir=save_dir)
-    evaluate_pose(model=model, dataset=dataset, save_dir=save_dir, debug=args.debug)
+    evaluate_pose(model=model, dataset=dataset, save_dir=save_dir, debug=args.debug, processed=args.processed)

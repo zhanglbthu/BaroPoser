@@ -16,7 +16,7 @@ class FootContact(L.LightningModule):
     Outputs: Foot Contact Probability ([s_lfoot, s_rfoot]).
     """
 
-    def __init__(self, finetune: bool=False, combo_id = 'lw_rp_h', height: bool=False, winit=False):
+    def __init__(self, combo_id = 'lw_rp_h'):
         super().__init__()
         
         # constants

@@ -14,8 +14,6 @@ from mobileposer.utils.model_utils import reduced_pose_to_full
 from mobileposer.helpers import *
 import mobileposer.articulate as art
 
-from model.heightposer.joints import Joints
-from model.heightposer.jointsAll import JointsAll
 from model.heightposer.poser import Poser
 from model.heightposer.velocity import Velocity
 from model.heightposer.footcontact import FootContact
@@ -28,8 +26,6 @@ class HeightPoserNet(L.LightningModule):
 
     def __init__(self, 
                  poser: Poser=None, 
-                 joints: Joints=None, 
-                 joint_all: JointsAll=None,
                  velocity: Velocity=None,
                  foot_contact: FootContact=None,
                  finetune: bool=False, wheights: bool=False, 
@@ -47,8 +43,6 @@ class HeightPoserNet(L.LightningModule):
 
         # model definitions
         self.pose = poser if poser else Poser(combo_id=combo_id)                   # pose estimation model
-        # self.joints = joints if joints else Joints(combo_id=combo_id)              # joint estimation model
-        # self.jointsAll = joint_all if joint_all else JointsAll(combo_id=combo_id)  # joint estimation model
         self.velocity = velocity if velocity else Velocity(combo_id=combo_id)      # velocity estimation model
         self.foot_contact = foot_contact if foot_contact else FootContact(combo_id=combo_id)  # foot-ground contact model
 
