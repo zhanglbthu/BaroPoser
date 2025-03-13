@@ -93,7 +93,7 @@ class model_config:
     sym_loss_weight = 1e-3
     
     combo_id = 'lw_rp'
-    name = 'heightposer_thigh_w+h+g'
+    name = 'heightposer_thigh_w+h+g_poseInit'
 
 class amass:    
     """AMASS dataset information."""

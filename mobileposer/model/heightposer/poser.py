@@ -43,7 +43,7 @@ class Poser(L.LightningModule):
                                 n_hidden=512, 
                                 n_rnn_layer=2, 
                                 dropout=0.4,
-                                init_size=joint_set.n_pose_init * 3,
+                                init_size=90,
                                 bidirectional=False) # pose estimation model
         
         # log input and output dimensions
@@ -81,13 +81,14 @@ class Poser(L.LightningModule):
         input_lengths = input.shape[0]
         input = self.input_normalize(input, angular_vel=True)
         
-        init_pose = init_pose.view(1, 24, 3, 3)
-        glb_rot, init_joint = self.bodymodel.forward_kinematics(init_pose)
-        init_joint = init_joint.view(-1, 72)
-        root_rot = glb_rot[:, 2]    
-        init_joint = self.joint_normalize(init_joint, root_rot).view(1, -1)
+        glb_rot, _ = self.bodymodel.forward_kinematics(init_pose.view(-1, 24, 3, 3))
+        glb_rot_6d = art.math.rotation_matrix_to_r6d(glb_rot).view(-1, 24, 6)
+        init_p = self.target_pose_normalize(glb_rot_6d).view(-1, 24, 6)[:, joint_set.reduced].view(1, -1)
+        # init_joint = init_joint.view(-1, 72)
+        # root_rot = glb_rot[:, 2]    
+        # init_joint = self.joint_normalize(init_joint, root_rot).view(1, -1)
         
-        input = (input.unsqueeze(0), init_joint)
+        input = (input.unsqueeze(0), init_p)
         
         pred_pose = self.forward(input, [input_lengths])
         
@@ -119,6 +120,10 @@ class Poser(L.LightningModule):
         return input
     
     def target_pose_normalize(self, target_pose):
+        '''
+        convert target pose [N, 24, 6] to relative pose
+        '''
+        
         target_pose = target_pose.view(-1, 24, 6)
         target_pose = art.math.r6d_to_rotation_matrix(target_pose).view(-1, 24, 3, 3)
         
@@ -149,17 +154,13 @@ class Poser(L.LightningModule):
         B, S, _ = target_pose.shape
         target_pose = self.target_pose_normalize(target_pose).view(B, S, -1)
 
-        # target joints
-        joints = outputs['joints']
-        joints = self.joint_normalize(joints, root_rot)
-        target_joints = joints.view(B, S, -1)
 
         # predict pose
         pose_input = imu_inputs  
         # normalize input
         pose_input = self.input_normalize(pose_input, angular_vel=True).view(B, S, -1)
-        
-        pose_input = (pose_input, target_joints[:, 0])
+        init_pose = target_pose[:, 0].view(-1, 24, 6)[:, joint_set.reduced].view(B, -1)
+        pose_input = (pose_input, init_pose)
         
         pose_p = self(pose_input, input_lengths)
 
