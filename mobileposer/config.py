@@ -72,7 +72,7 @@ class model_config:
     total_frames = past_frames + future_frames
 
     # data config
-    data_heights = True
+    data_heights = False
 
     # height poser config
     winit = True
@@ -93,7 +93,7 @@ class model_config:
     sym_loss_weight = 1e-3
     
     combo_id = 'lw_rp'
-    name = 'heightposer_noise0.1'
+    name = 'heightposer_thigh_w+h+g'
 
 class amass:    
     """AMASS dataset information."""
@@ -198,19 +198,22 @@ class joint_set:
     gravity_velocity = -0.018
 
     full = list(range(0, 24))
-    reduced = [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 14, 15, 16, 17, 18, 19]
-    ignored = [7, 8, 10, 11, 20, 21, 22, 23]
+    reduced = [0, 1, 3, 4, 5, 6, 9, 12, 13, 14, 15, 16, 17, 18, 19]
+    leaf_joint = [7, 8, 10, 11, 20, 21, 22, 23]
+    
+    ignored = [0, 7, 8, 10, 11, 20, 21, 22, 23]
+    
+    joint_init = [i for i in range(24) if i != 2]
     
     eval_select = [2, 3, 5, 6, 9, 13, 16, 18]
     
-    pred = [0, 2, 3, 5, 6, 8, 9, 11, 13, 16, 18, 20, 22]
-    rest = [1, 4, 7, 10, 12, 14, 15, 17, 19, 21, 23]
     rarm = [14, 17, 19, 21, 23]
     larm = [13, 16, 18, 20, 22]
 
     n_full = len(full)
     n_ignored = len(ignored)
     n_reduced = len(reduced)
+    n_pose_init = len(joint_init)
 
     lower_body = [0, 1, 2, 4, 5, 7, 8, 10, 11]
     lower_body_parent = [None, 0, 0, 1, 2, 3, 4, 5, 6]

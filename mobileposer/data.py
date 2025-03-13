@@ -107,8 +107,21 @@ class PoseDataset(Dataset):
         
         combo_acc = acc[:, c]
         combo_ori = ori[:, c]
+        
+        root_ori = combo_ori[:, -1] # [N, 3, 3]
+        
+        # compute angular velocity
+        root_angular_vel = art.math.rotation_matrix_to_axis_angle(root_ori[:-1].transpose(1, 2).bmm(root_ori[1:]))
+        root_angular_vel = torch.cat((torch.zeros(1, 3), root_angular_vel)).view(-1, 3)
+        
+        # compute relative heights
+        height_rel = (height[:, 0] - height[:, 1]).view(-1, 1)
 
-        imu_input = torch.cat([combo_acc.flatten(1), combo_ori.flatten(1)], dim=1) # [[N, 9], [N, 27]] => [N, 36]
+        imu_input = torch.cat([combo_acc.flatten(1), combo_ori.flatten(1)], dim=1) # [N, 24]
+        
+        imu_input = torch.cat([imu_input, root_angular_vel], dim=1) # [N, 27]
+        
+        imu_input = torch.cat([imu_input, height_rel], dim=1) # [N, 28]
         
         if self.wheights:
             height = height.view(-1, 2)

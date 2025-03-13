@@ -64,8 +64,6 @@ def process_amass(dataset=None, heights: bool=False):
         print("\rReading", ds_name)
 
         for npz_fname in tqdm(sorted(glob.glob(os.path.join(paths.raw_amass, ds_name, "*/*_poses.npz")))):
-            if npz_fname.split('/')[-2] != '36':
-                continue
 
             try: cdata = np.load(npz_fname)
             except: continue
