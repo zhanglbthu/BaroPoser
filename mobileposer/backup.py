@@ -100,8 +100,7 @@ class Poser(L.LightningModule):
         return pred_pose
 
     def input_normalize(self, pose_input, angular_vel=False, add_noise=False):
-        if len(pose_input.shape) == 3:
-            B, S, _ = pose_input.shape
+        B, S, _ = pose_input.shape
         pose_input = pose_input.view(-1, 28)
         glb_acc = pose_input[:, :6].view(-1, 2, 3)
         glb_rot = pose_input[:, 6:24].view(-1, 2, 3, 3)
@@ -177,6 +176,7 @@ class Poser(L.LightningModule):
         target_pose = outputs['poses'] # [batch_size, window_length, 144] 
         B, S, _ = target_pose.shape
         target_pose = self.target_pose_normalize(target_pose).view(B, S, -1)
+
 
         # predict pose
         pose_input = imu_inputs  
