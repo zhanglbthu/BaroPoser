@@ -100,7 +100,7 @@ class Poser(L.LightningModule):
         return pred_pose
 
     def input_normalize(self, pose_input, angular_vel=False, add_noise=False):
-        if len(pose_input.shape) == 3:
+        if len(pose_input.shape) == 2:
             B, S, _ = pose_input.shape
         pose_input = pose_input.view(-1, 28)
         glb_acc = pose_input[:, :6].view(-1, 2, 3)
