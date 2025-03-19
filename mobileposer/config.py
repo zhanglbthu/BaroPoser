@@ -82,8 +82,10 @@ class model_config:
     
     noise_std = 0.1
     
+    h_noise = 0.05
+    
     # mobile poser config
-    physics = True
+    physics = False
     
     # loss config
     jerk_loss = False
@@ -93,7 +95,7 @@ class model_config:
     sym_loss_weight = 1e-3
     
     combo_id = 'lw_rp'
-    name = 'heightposer_thigh_full_woh'
+    name = 'heightposer_thigh_full_hnoise0.05'
 
 class amass:    
     """AMASS dataset information."""
@@ -199,6 +201,7 @@ class joint_set:
 
     full = list(range(0, 24))
     reduced = [0, 1, 3, 4, 5, 6, 9, 12, 13, 14, 15, 16, 17, 18, 19]
+    reduced_old = [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 14, 15, 16, 17, 18, 19]
     leaf_joint = [7, 8, 10, 11, 20, 21, 22, 23]
     
     ignored = [0, 7, 8, 10, 11, 20, 21, 22, 23]

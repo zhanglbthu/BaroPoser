@@ -34,12 +34,12 @@ class Poser(L.LightningModule):
             self.input_dim = self.C.n_output_joints*3 + imu_input_dim
 
         # model definitions
-        self.pose = RNN(self.input_dim, joint_set.n_reduced*6, 256) # pose estimation model
+        self.pose = RNN(self.input_dim, 16*6, 256) # pose estimation model
         
         # log input and output dimensions
         if torch.cuda.current_device() == 0:
             print(f"Input dimensions: {self.input_dim}")
-            print(f"Output dimensions: {joint_set.n_reduced*6}")
+            print(f"Output dimensions: {16*6}")
         
         # loss function
         self.loss = nn.MSELoss()

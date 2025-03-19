@@ -23,32 +23,30 @@ body_model = art.ParametricModel(paths.smpl_file, device='cuda')
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--model', type=str, default='data/checkpoints/heightposer/lw_rp/base_model.pth')
     parser.add_argument('--name', type=str, default='default')
-    os.makedirs(paths.temp_dir, exist_ok=True)
-    os.makedirs(paths.live_record_dir, exist_ok=True)
     args = parser.parse_args()
     
     device = torch.device("cuda")
     clock = Clock()
     
     # load model
-    model_name = model_config.name.split('_')[0]
+    model_name = args.name
     if model_name == 'imuposer':
-        model = load_imuposer_model(model_path=args.model, combo_id=model_config.combo_id)
+        model_path = 'data/checkpoints/imuposer/lw_rp/base_model.pth'
+        model = load_imuposer_model(model_path=model_path, combo_id=model_config.combo_id)
     elif model_name == 'mobileposer':
-        model = load_mobileposer_model(model_path=args.model, combo_id=model_config.combo_id)
-    elif model_name == 'heightposer':
-        model = load_heightposer_model(model_path=args.model, combo_id=model_config.combo_id)
+        model_path = 'data/checkpoints/mobileposer/lw_rp/base_model.pth'
+        model = load_mobileposer_model(model_path=model_path, combo_id=model_config.combo_id)
     else:
         raise ValueError(f"Model {model_name} not supported.")
     print('Model loaded.')
     
     # load livedemo data
-    data_name = "stair_01"
-    data_path = "data/livedemo/raw/" + data_name + ".pt"
-    save_path = "data/livedemo/processed"
-    os.makedirs(save_path, exist_ok=True)
+    data_name = "freestyle_20250317_164707"
+    data_path = "data/livedemo/record/" + data_name + ".pt"
+    save_dir = "data/livedemo/processed/" + data_name
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = save_dir + "/" + model_name + ".pt"
     data = torch.load(data_path)
     
     model.eval()
@@ -62,12 +60,7 @@ if __name__ == '__main__':
     
     input = torch.cat([acc.flatten(1), ori.flatten(1)], dim=1)
     
-    if model_config.winit:
-        # 初始化24个关节的姿态，均为单位矩阵
-        pose_t = torch.eye(3).repeat(1, 24, 1, 1).to(device)
-        pose_p, tran_p = model.predict_full(input, pose_t[0])
-    else:
-        online_results = [model.forward_online(f, tran=True) for f in torch.cat((input, input[-1].repeat(model_config.future_frames, 1)))]
-        pose_p, tran_p = [torch.stack(_)[model_config.future_frames:] for _ in zip(*online_results)]
+    online_results = [model.forward_online(f) for f in torch.cat((input, input[-1].repeat(model_config.future_frames, 1)))]
+    pose_p = torch.stack(online_results)[model_config.future_frames:].view(-1, 24, 3, 3)
     
-    torch.save({'pose_p': pose_p, 'tran_p': tran_p}, save_path + "/" + data_name + "_" + args.name + ".pt")
+    torch.save({'pose': pose_p}, save_path)

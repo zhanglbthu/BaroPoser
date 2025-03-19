@@ -100,7 +100,7 @@ class Poser(L.LightningModule):
         return pred_pose
 
     def input_normalize(self, pose_input, angular_vel=False, add_noise=False):
-        if len(pose_input.shape) == 2:
+        if len(pose_input.shape) == 3:
             B, S, _ = pose_input.shape
         pose_input = pose_input.view(-1, 28)
         glb_acc = pose_input[:, :6].view(-1, 2, 3)
@@ -129,6 +129,9 @@ class Poser(L.LightningModule):
                                                                root_angular_vel_mat), 
                                                   art.math.axis_angle_to_rotation_matrix(axis_angle_thigh).view(B, 1, 3, 3)).view(B, S, 9)
             root_angular_vel = art.math.rotation_matrix_to_axis_angle(root_angular_vel_noisy).view(-1, 3)
+            
+            # add noise to relative height
+            rel_height = rel_height + torch.randn(B, S, 1).view(-1, 1).to(self.device) * self.C.h_noise
         
         g = torch.tensor([0, -1, 0], dtype=torch.float32, device=pose_input.device)
         root_rotation = glb_rot[:, 1] # [N, 3, 3]
@@ -192,16 +195,6 @@ class Poser(L.LightningModule):
         loss = self.loss(pose_p, pose_t)
 
         return loss
-
-    def compute_jerk_loss(self, pred_pose):
-        jerk = pred_pose[:, 3:, :] - 3*pred_pose[:, 2:-1, :] + 3*pred_pose[:, 1:-2, :] - pred_pose[:, :-3, :]
-        l1_norm = torch.norm(jerk, p=1, dim=2)
-        return l1_norm.sum(dim=1).mean()
-
-    def compute_temporal_loss(self, pred_pose):
-        acc = pred_pose[:, 2:, :] + pred_pose[:, :-2, :] - 2*pred_pose[:, 1:-1, :]
-        l1_norm = torch.norm(acc, p=1, dim=2)
-        return l1_norm.sum(dim=1).mean() 
 
     def training_step(self, batch, batch_idx):
         loss = self.shared_step(batch, add_noise=True)
