@@ -94,7 +94,7 @@ class HeightPoserNet(L.LightningModule):
         return (p.clamp(self.prob_threshold[0], self.prob_threshold[1]) - self.prob_threshold[0]) / (self.prob_threshold[1] - self.prob_threshold[0])
     
     def _reduced_global_to_full(self, reduced_pose):
-        pose = art.math.r6d_to_rotation_matrix(reduced_pose).view(-1, joint_set.n_reduced, 3, 3)
+        pose = art.math.r6d_to_rotation_matrix(reduced_pose).view(-1, 16, 3, 3)
         pose = reduced_pose_to_full(pose.unsqueeze(0)).squeeze(0).view(-1, 24, 3, 3)
         pred_pose = self.global_to_local_pose(pose)
         pred_pose[:, joint_set.leaf_joint] = torch.eye(3, device=self.C.device)
@@ -176,8 +176,11 @@ class HeightPoserNet(L.LightningModule):
         
         if poser_only:
             pred_pose = self.pose.predict_RNN(input, init_pose)
-            root_rotation = input[:, 15:24].view(-1, 3, 3)
-            pred_pose = self._reduced_glb_6d_to_full_local_mat(root_rotation=root_rotation, glb_reduced_pose=pred_pose)
+            if self.C.global_coord:
+                pred_pose = self._reduced_global_to_full(pred_pose)
+            else:
+                root_rotation = input[:, 15:24].view(-1, 3, 3)
+                pred_pose = self._reduced_glb_6d_to_full_local_mat(root_rotation=root_rotation, glb_reduced_pose=pred_pose)
             return pred_pose
         
         # predict joints

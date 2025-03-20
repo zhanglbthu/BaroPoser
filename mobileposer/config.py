@@ -6,7 +6,7 @@ class train_hypers:
     """Hyperparameters for training."""
     batch_size = 256
     num_workers = 8
-    num_epochs = 200
+    num_epochs = 50
     accelerator = "gpu"
     device = 1
     lr = 3e-4
@@ -82,20 +82,16 @@ class model_config:
     
     noise_std = 0.1
     
-    h_noise = 0.05
+    h_noise = 0.0
     
     # mobile poser config
     physics = False
     
-    # loss config
-    jerk_loss = False
-    jerk_loss_weight = 1e-5
-    
-    symmetry_loss = True
-    sym_loss_weight = 1e-3
+    # coordinate config
+    global_coord = False
     
     combo_id = 'lw_rp'
-    name = 'heightposer_thigh_full_hnoise0.05'
+    name = 'heightposer_relative_toy'
 
 class amass:    
     """AMASS dataset information."""

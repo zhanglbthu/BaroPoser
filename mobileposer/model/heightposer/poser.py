@@ -32,29 +32,29 @@ class Poser(L.LightningModule):
         # input dimensions
         imu_set = amass.combos_mine[combo_id]
         imu_num = len(imu_set)
-        imu_input_dim = 22
+        imu_input_dim = imu_num * 12 + 1 if model_config.global_coord else 22
         
         self.input_dim = imu_input_dim
+        self.output_dim = (joint_set.n_reduced + 1) * 6 if model_config.global_coord else joint_set.n_reduced * 6
+        self.init_size = self.output_dim
             
         # model definitions
         self.bodymodel = art.model.ParametricModel(paths.smpl_file, device=device)
         self.pose = RNNWithInit(n_input=self.input_dim, 
-                                n_output=joint_set.n_reduced*6, 
+                                n_output=self.output_dim, 
                                 n_hidden=512, 
                                 n_rnn_layer=2, 
                                 dropout=0.4,
-                                init_size=90,
+                                init_size=self.init_size,
                                 bidirectional=False) # pose estimation model
         
         # log input and output dimensions
         if torch.cuda.current_device() == 0:
             print(f"Input dimensions: {self.input_dim}")
-            print(f"Output dimensions: {joint_set.n_reduced*6}")
+            print(f"Output dimensions: {self.output_dim}")
         
         # loss function
         self.loss = nn.MSELoss()
-        self.t_weight = 1e-5 
-        self.use_pos_loss = True
 
         # track stats
         self.validation_step_loss = []
@@ -79,14 +79,17 @@ class Poser(L.LightningModule):
 
     def predict_RNN(self, input, init_pose):
         input_lengths = input.shape[0]
-        input = self.input_normalize(input, angular_vel=True)
         
         glb_rot, _ = self.bodymodel.forward_kinematics(init_pose.view(-1, 24, 3, 3))
         glb_rot_6d = art.math.rotation_matrix_to_r6d(glb_rot).view(-1, 24, 6)
-        init_p = self.target_pose_normalize(glb_rot_6d).view(-1, 24, 6)[:, joint_set.reduced].view(1, -1)
-        # init_joint = init_joint.view(-1, 72)
-        # root_rot = glb_rot[:, 2]    
-        # init_joint = self.joint_normalize(init_joint, root_rot).view(1, -1)
+        
+        if self.C.global_coord:
+            input = self.input_normalize(input, angular_vel=True, global_coord=True)
+            init_p = glb_rot_6d.view(-1, 24, 6)[:, joint_set.reduced_old].view(1, -1)
+            
+        else:
+            input = self.input_normalize(input, angular_vel=True)
+            init_p = self.target_pose_normalize(glb_rot_6d).view(-1, 24, 6)[:, joint_set.reduced].view(1, -1)
         
         input = (input.unsqueeze(0), init_p)
         
@@ -99,7 +102,7 @@ class Poser(L.LightningModule):
         pred_pose, _, _ = self.pose(batch, input_lengths)
         return pred_pose
 
-    def input_normalize(self, pose_input, angular_vel=False, add_noise=False):
+    def input_normalize(self, pose_input, angular_vel=False, add_noise=False, global_coord=False):
         if len(pose_input.shape) == 3:
             B, S, _ = pose_input.shape
         pose_input = pose_input.view(-1, 28)
@@ -133,17 +136,20 @@ class Poser(L.LightningModule):
             # add noise to relative height
             rel_height = rel_height + torch.randn(B, S, 1).view(-1, 1).to(self.device) * self.C.h_noise
         
-        g = torch.tensor([0, -1, 0], dtype=torch.float32, device=pose_input.device)
-        root_rotation = glb_rot[:, 1] # [N, 3, 3]
-        g_root = root_rotation.transpose(1, 2).matmul(g) # [N, 3]
-        
-        acc = torch.cat((glb_acc[:, :1] - glb_acc[:, 1:], glb_acc[:, 1:]), dim=1).bmm(glb_rot[:, 1])
-        ori = torch.cat((glb_rot[:, 1:].transpose(2, 3).matmul(glb_rot[:, :1]), glb_rot[:, 1:]), dim=1)
-        
-        if angular_vel:
-            input = torch.cat((acc.flatten(1), ori[:, :1].flatten(1), root_angular_vel, rel_height, g_root), dim=1)
+        if global_coord:
+            input = torch.cat((glb_acc.flatten(1), glb_rot.flatten(1), rel_height), dim=1)
         else:
-            input = torch.cat((acc.flatten(1), ori.flatten(1)), dim=1)
+            g = torch.tensor([0, -1, 0], dtype=torch.float32, device=pose_input.device)
+            root_rotation = glb_rot[:, 1] # [N, 3, 3]
+            g_root = root_rotation.transpose(1, 2).matmul(g) # [N, 3]
+            
+            acc = torch.cat((glb_acc[:, :1] - glb_acc[:, 1:], glb_acc[:, 1:]), dim=1).bmm(glb_rot[:, 1])
+            ori = torch.cat((glb_rot[:, 1:].transpose(2, 3).matmul(glb_rot[:, :1]), glb_rot[:, 1:]), dim=1)
+            
+            if angular_vel:
+                input = torch.cat((acc.flatten(1), ori[:, :1].flatten(1), root_angular_vel, rel_height, g_root), dim=1)
+            else:
+                input = torch.cat((acc.flatten(1), ori.flatten(1)), dim=1)
         return input
     
     def target_pose_normalize(self, target_pose):
@@ -172,26 +178,29 @@ class Poser(L.LightningModule):
         inputs, outputs = batch
         imu_inputs, input_lengths = inputs
         outputs, output_lengths = outputs
-        
-        # root rotation
-        root_rot = imu_inputs[:, :, 15:24].view(-1, 3, 3)
 
         # target pose
         target_pose = outputs['poses'] # [batch_size, window_length, 144] 
         B, S, _ = target_pose.shape
-        target_pose = self.target_pose_normalize(target_pose).view(B, S, -1)
 
         # predict pose
         pose_input = imu_inputs  
         # normalize input
-        pose_input = self.input_normalize(pose_input, angular_vel=True, add_noise=add_noise).view(B, S, -1)
-        init_pose = target_pose[:, 0].view(-1, 24, 6)[:, joint_set.reduced].view(B, -1)
-        pose_input = (pose_input, init_pose)
+        if model_config.global_coord:
+            pose_input = self.input_normalize(pose_input, angular_vel=True, add_noise=add_noise, global_coord=True).view(B, S, -1)
+            init_pose = target_pose[:, 0].view(-1, 24, 6)[:, joint_set.reduced_old].view(B, -1)
+            pose_input = (pose_input, init_pose)
+            pose_t = target_pose.view(B, S, 24, 6)[:, :, joint_set.reduced_old].view(B, S, -1)
+        else:
+            target_pose = self.target_pose_normalize(target_pose).view(B, S, -1)
+            pose_input = self.input_normalize(pose_input, angular_vel=True, add_noise=add_noise).view(B, S, -1)
+            init_pose = target_pose[:, 0].view(-1, 24, 6)[:, joint_set.reduced].view(B, -1)
+            pose_input = (pose_input, init_pose)
+            pose_t = target_pose.view(B, S, 24, 6)[:, :, joint_set.reduced].view(B, S, -1)
         
         pose_p = self(pose_input, input_lengths)
 
         # compute pose loss
-        pose_t = target_pose.view(B, S, 24, 6)[:, :, joint_set.reduced].view(B, S, -1)
         loss = self.loss(pose_p, pose_t)
 
         return loss

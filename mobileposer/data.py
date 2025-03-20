@@ -83,7 +83,12 @@ class PoseDataset(Dataset):
         heights = file_data.get('heights', [None] * len(poses))
         
         for acc, ori, pose, tran, joint, foot, height in zip(accs, oris, poses, trans, joints, foots, heights):
-
+            
+            # acc = root_rot.transpose(2, 3).matmul(acc.unsqueeze(-1)).squeeze(-1) # [N, 6, 3]
+            # ori = root_rot.transpose(2, 3).matmul(ori) # [N, 6, 3, 3]
+            
+            # pose[:, 0] = torch.eye(3, device=pose.device)
+            
             # select only the first 5 IMUs (lw, rw, lh, rh, head)
             acc, ori = acc[:, :5]/amass.acc_scale, ori[:, :5]
             
