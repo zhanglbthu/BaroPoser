@@ -27,7 +27,7 @@ class Velocity(L.LightningModule):
         self.C = model_config
         self.hypers = train_hypers
         self.bodymodel = ParametricModel(paths.smpl_file, device=self.C.device)
-        self.input_size = 12 * self.imu_nums + 2 if self.C.vel_wh else 12 * self.imu_nums
+        self.input_size = 12 * self.imu_nums + 1 if self.C.vel_wh else 12 * self.imu_nums
         self.vel_joint = amass.vel_joint
         self.output_size = len(self.vel_joint) * 3
         
@@ -68,6 +68,7 @@ class Velocity(L.LightningModule):
 
     def predict_RNN(self, input, init_vel):
         input_lengths = input.shape[0]
+        
         init_vel = init_vel.view(1, self.output_size) 
         
         input = (input.unsqueeze(0), init_vel)
@@ -86,18 +87,26 @@ class Velocity(L.LightningModule):
         vel, _, self.rnn_state = self.vel(batch, input_lengths, self.rnn_state)
         return vel
     
+    def input_process(self, inputs):
+        # process input
+        B, S, input_dim = inputs.shape
+        inputs = inputs.view(-1, input_dim)
+        
+        imu_inputs = inputs[:, :12 * self.imu_nums]
+        h_inputs = inputs[:, -1:].view(-1, 1)
+        
+        inputs = torch.cat([imu_inputs, h_inputs], dim=-1)
+        
+        return inputs
+        
     def shared_step(self, batch, add_noise=False):
         # unpack data
         inputs, outputs = batch
         imu_inputs, input_lengths = inputs
         outputs, _ = outputs
-
-        if model_config.data_heights and not model_config.vel_wh:
-            imu_inputs = imu_inputs[:, :, :-2]
         
         # target joints
         joints = outputs['joints']
-        target_joints = joints.view(joints.shape[0], joints.shape[1], -1)
         B, S, _, _ = joints.shape
 
         # target velocity
@@ -124,7 +133,9 @@ class Velocity(L.LightningModule):
             imu_inputs_noisy[..., 6:24] = rot_noisy
             
             imu_inputs = imu_inputs_noisy 
-        
+            
+        imu_inputs = self.input_process(imu_inputs).view(B, S, -1)
+
         imu_inputs = (imu_inputs, target_vel[:, 0])
         pred_vel, _, _ = self.vel(imu_inputs, input_lengths)
         loss = self.loss(pred_vel, target_vel)

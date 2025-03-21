@@ -6,7 +6,7 @@ class train_hypers:
     """Hyperparameters for training."""
     batch_size = 256
     num_workers = 8
-    num_epochs = 50
+    num_epochs = 200
     accelerator = "gpu"
     device = 1
     lr = 3e-4
@@ -91,7 +91,7 @@ class model_config:
     global_coord = False
     
     combo_id = 'lw_rp'
-    name = 'heightposer_relative_toy'
+    name = 'heightposer_relative'
 
 class amass:    
     """AMASS dataset information."""

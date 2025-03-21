@@ -117,24 +117,28 @@ class HeightPoserNet(L.LightningModule):
     def predict_full(self, input, init_pose):
         input_lengths = input.shape[0]
         
-        # acc_input = input[:, :6]
-        # height_input = input[:, -2:]
-        # pose_input = torch.cat([acc_input, height_input], dim=-1)
         pose_input = input
         
         pred_pose = self.pose.predict_RNN(pose_input, init_pose)
-        pred_pose = self._reduced_global_to_full(pred_pose).view(-1, 24, 3, 3)
+        if self.C.global_coord:
+            pred_pose = self._reduced_global_to_full(pred_pose).view(-1, 24, 3, 3)
+        else:
+            root_rotation = input[:, 15:24].view(-1, 3, 3)
+            pred_pose = self._reduced_glb_6d_to_full_local_mat(root_rotation=root_rotation, glb_reduced_pose=pred_pose)
         
         pred_joint = self.bodymodel.forward_kinematics(pred_pose)[1].view(-1, 72)
         
-        if model_config.data_heights and not model_config.vel_wh:
-            input = input[:, :-2]
+        # change input
+        imu_input = input[:, :24]
+        w_input = input[:, 24:27]
+        h_input = input[:, -1:]
+        input = torch.cat((imu_input, h_input), dim=1)
         
         input_tran = torch.cat((pred_joint, input), dim=1)
 
         pred_vel = self.velocity.predict_RNN(input, torch.zeros(3).to(self.C.device))
         
-        input_tran = input_tran[:, :-2]
+        input_tran = input_tran[:, :-1]
         input_tran = input_tran.view(1, -1, 96)
         pred_contact = self.foot_contact(input_tran, [input_lengths])
         pred_contact = pred_contact.view(-1, 2)
