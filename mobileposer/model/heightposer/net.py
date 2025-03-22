@@ -126,51 +126,18 @@ class HeightPoserNet(L.LightningModule):
             root_rotation = input[:, 15:24].view(-1, 3, 3)
             pred_pose = self._reduced_glb_6d_to_full_local_mat(root_rotation=root_rotation, glb_reduced_pose=pred_pose)
         
-        pred_joint = self.bodymodel.forward_kinematics(pred_pose)[1].view(-1, 72)
-        
-        # change input
+        # predict velocity
         imu_input = input[:, :24]
         w_input = input[:, 24:27]
         h_input = input[:, -1:]
         input = torch.cat((imu_input, h_input), dim=1)
-        
-        input_tran = torch.cat((pred_joint, input), dim=1)
 
         pred_vel = self.velocity.predict_RNN(input, torch.zeros(3).to(self.C.device))
-        
-        input_tran = input_tran[:, :-1]
-        input_tran = input_tran.view(1, -1, 96)
-        pred_contact = self.foot_contact(input_tran, [input_lengths])
-        pred_contact = pred_contact.view(-1, 2)
         
         pred_vel = pred_vel / (datasets.fps/amass.vel_scale)
         pred_root_vel = pred_vel[:, :3]
         
-        translation = []
-        joints = pred_joint.view(-1, 24, 3)
-        for i in range(input_lengths):
-            contact = pred_contact[i]
-            lfoot_pos, rfoot_pos = joints[i, 10], joints[i, 11]
-            if contact[0] > contact[1]:
-                contact_vel = self.last_lfoot_pos - lfoot_pos + self.gravity_velocity
-            else:
-                contact_vel = self.last_rfoot_pos - rfoot_pos + self.gravity_velocity
-            
-            root_vel = pred_root_vel[i]
-            weight = self._prob_to_weight(contact.max())
-            velocity = art.math.lerp(root_vel, contact_vel, weight)
-            
-            # remove penetration
-            current_foot_y = self.current_root_y + min(lfoot_pos[1].item(), rfoot_pos[1].item())
-            if current_foot_y + velocity[1].item() <= self.floor_y:
-                velocity[1] = self.floor_y - current_foot_y
-            
-            self.current_root_y += velocity[1].item()
-            self.last_lfoot_pos, self.last_rfoot_pos = lfoot_pos, rfoot_pos
-            self.last_root_pos += velocity
-            translation.append(self.last_root_pos.clone())
-            
-        translation = torch.stack(translation)
+        translation = self.velocity_to_root_position(pred_root_vel)
 
         return pred_pose, translation
     
