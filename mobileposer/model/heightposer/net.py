@@ -115,7 +115,8 @@ class HeightPoserNet(L.LightningModule):
         return pose
     
     def predict_full(self, input, init_pose):
-        input_lengths = input.shape[0]
+        
+        N, _ = input.shape
         
         pose_input = input
         
@@ -127,17 +128,14 @@ class HeightPoserNet(L.LightningModule):
             pred_pose = self._reduced_glb_6d_to_full_local_mat(root_rotation=root_rotation, glb_reduced_pose=pred_pose)
         
         # predict velocity
-        imu_input = input[:, :24]
-        w_input = input[:, 24:27]
-        h_input = input[:, -1:]
-        input = torch.cat((imu_input, h_input), dim=1)
+        input = torch.cat([input[:, :24], input[:, -1:]], dim=1)
 
-        pred_vel = self.velocity.predict_RNN(input, torch.zeros(3).to(self.C.device))
-        
+        pred_vel = self.velocity.predict_RNN(input, window_size=125)
+        pred_vel = torch.cat([pred_vel[:, :1], torch.zeros(N, 1).to(self.C.device), pred_vel[:, 1:]], dim=1)
+
         pred_vel = pred_vel / (datasets.fps/amass.vel_scale)
-        pred_root_vel = pred_vel[:, :3]
         
-        translation = self.velocity_to_root_position(pred_root_vel)
+        translation = self.velocity_to_root_position(pred_vel)
 
         return pred_pose, translation
     

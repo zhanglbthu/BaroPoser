@@ -7,7 +7,7 @@ import lightning as L
 from torch.optim.lr_scheduler import StepLR 
 
 from mobileposer.articulate.model import ParametricModel
-from model.base_model.rnn import RNNWithInit
+from model.base_model.rnn import RNNWithInit, RNN
 from mobileposer.config import *
 import mobileposer.articulate as art
 
@@ -17,7 +17,7 @@ class Velocity(L.LightningModule):
     Outputs: Per-Frame Root Velocity. 
     """
 
-    def __init__(self, finetune: bool=False, combo_id = 'lw_rp_h', height: bool=False, winit=False):
+    def __init__(self, combo_id = 'lw_rp_h'):
         super().__init__()
         
         self.imu_set = amass.combos_mine[combo_id]
@@ -29,11 +29,11 @@ class Velocity(L.LightningModule):
         self.bodymodel = ParametricModel(paths.smpl_file, device=self.C.device)
         self.input_size = 12 * self.imu_nums + 1 if self.C.vel_wh else 12 * self.imu_nums
         self.vel_joint = amass.vel_joint
-        self.output_size = len(self.vel_joint) * 3
+        self.output_size = len(self.vel_joint) * 2
         
         # model definitions
-        self.vel = RNNWithInit(n_input=self.input_size, n_output=self.output_size, n_hidden=512,
-                                 n_rnn_layer=2, dropout=0.4)
+        self.vel = RNN(n_input=self.input_size, n_output=self.output_size, n_hidden=512,
+                                 n_rnn_layer=2, dropout=0.4, bidirectional=True)
         
         self.rnn_state = None
 
@@ -49,11 +49,6 @@ class Velocity(L.LightningModule):
         self.validation_step_loss = []
         self.training_step_loss = []
         self.save_hyperparameters()
-        
-        # constants
-        self.num_past_frames = model_config.past_frames
-        self.num_future_frames = model_config.future_frames
-        self.num_total_frames = self.num_past_frames + self.num_future_frames
 
     def reset(self):
         self.rnn_state = None
@@ -66,30 +61,33 @@ class Velocity(L.LightningModule):
 
         return vel
 
-    def predict_RNN(self, input, init_vel):
-        input_lengths = input.shape[0]
-        
-        init_vel = init_vel.view(1, self.output_size) 
-        
-        input = (input.unsqueeze(0), init_vel)
-        
-        pred_vel = self.forward(input, [input_lengths])
-        
-        return pred_vel.squeeze(0)
+    def predict_RNN(self, input, window_size):
+        N, _ = input.shape
+        pred_vel_list = []  
+
+        # 按 window_size 划分序列
+        for start in range(0, N, window_size):
+            end = min(start + window_size, N)  
+            sub_input = input[start:end]  
+            sub_length = sub_input.shape[0]  
+            
+            sub_input = sub_input.unsqueeze(0)  # [1, sub_length, input_dim]
+            pred_sub_vel = self.forward(sub_input, [sub_length])  
+            
+            pred_vel_list.append(pred_sub_vel.squeeze(0))
+            
+        pred_vel = torch.cat(pred_vel_list, dim=0)
+
+        return pred_vel
         
     def forward(self, batch, input_lengths=None):
         # forward velocity model
         vel, _, _ = self.vel(batch, input_lengths)
         return vel
-
-    def forward_online(self, batch, input_lengths=None):
-        # forward velocity model
-        vel, _, self.rnn_state = self.vel(batch, input_lengths, self.rnn_state)
-        return vel
     
     def input_process(self, inputs):
         # process input
-        B, S, input_dim = inputs.shape
+        _, _, input_dim = inputs.shape
         inputs = inputs.view(-1, input_dim)
         
         imu_inputs = inputs[:, :12 * self.imu_nums]
@@ -111,9 +109,9 @@ class Velocity(L.LightningModule):
 
         # target velocity
         target_vel = outputs['vels'][:, :, amass.vel_joint].view(B, S, -1)
+        target_vel = target_vel[:, :, [0, 2]]
 
-        # predict joint velocity
-        # change: add init vel
+        # predict root velocity
         # change: add noise
         if add_noise:
             imu_inputs_noisy = imu_inputs.clone()
@@ -136,9 +134,20 @@ class Velocity(L.LightningModule):
             
         imu_inputs = self.input_process(imu_inputs).view(B, S, -1)
 
-        imu_inputs = (imu_inputs, target_vel[:, 0])
         pred_vel, _, _ = self.vel(imu_inputs, input_lengths)
         loss = self.loss(pred_vel, target_vel)
+        
+        # # change
+        # '''
+        # pred_vel: [B, S, 2]
+        # target_vel: [B, S, 2]
+        # sum the velocity to get the total translation [B, S, 2]
+        # then compute the loss
+        # '''
+        # pred_tran = torch.sum(pred_vel, dim=1)
+        # target_tran = torch.sum(target_vel, dim=1)
+
+        # loss = self.loss(pred_tran, target_tran)
 
         return loss
 
