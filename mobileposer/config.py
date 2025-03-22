@@ -91,7 +91,7 @@ class model_config:
     global_coord = False
     
     combo_id = 'lw_rp'
-    name = 'heightposer_vel_ava'
+    name = 'heightposer_pl_woinit'
 
 class amass:    
     """AMASS dataset information."""
@@ -188,7 +188,7 @@ class datasets:
     root_relative = False
 
     # Window length of IMU and Pose data 
-    window_length = 125
+    window_length = 150
 
 
 class joint_set:
