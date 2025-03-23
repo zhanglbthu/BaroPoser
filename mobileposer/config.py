@@ -91,7 +91,7 @@ class model_config:
     global_coord = False
     
     combo_id = 'lw_rp'
-    name = 'heightposer_pl_woinit'
+    name = 'heightposer_mpL_woinit'
 
 class amass:    
     """AMASS dataset information."""

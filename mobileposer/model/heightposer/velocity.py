@@ -130,17 +130,23 @@ class Velocity(L.LightningModule):
         imu_inputs = self.input_process(imu_inputs).view(B, S, -1)
 
         pred_vel, _, _ = self.vel(imu_inputs, input_lengths)
+        
+        # # velocity loss
         # loss = self.loss(pred_vel, target_vel)
 
-        pred_tran = torch.sum(pred_vel, dim=1)
-        target_tran = torch.sum(target_vel, dim=1)
+        # # position loss
+        # pred_tran = torch.sum(pred_vel, dim=1)
+        # target_tran = torch.sum(target_vel, dim=1)
 
-        loss = self.loss(pred_tran, target_tran)
+        # loss = self.loss(pred_tran, target_tran)
+        
+        # mobileposer loss
+        loss = self.compute_loss(pred_vel, target_vel)
 
         return loss
 
     def compute_loss(self, pred_vel, gt_vel):
-        loss = sum(self.compute_vel_loss(pred_vel, gt_vel, i) for i in [1, 3, 9, 27])
+        loss = sum(self.compute_vel_loss(pred_vel, gt_vel, i) for i in [1, 3, 9])
         return loss
 
     def compute_vel_loss(self, pred_vel, gt_vel, n=1):
