@@ -26,7 +26,8 @@ class FootContact(L.LightningModule):
         # input dimensions
         imu_set = amass.combos_mine[combo_id]
         imu_num = len(imu_set)
-        imu_input_dim = imu_num * 12
+        self.imu_nums = imu_num
+        imu_input_dim = imu_num * 12 + 1
 
         self.input_dim = self.C.n_output_joints*3 + imu_input_dim 
 
@@ -50,6 +51,18 @@ class FootContact(L.LightningModule):
         foot_contact, _, _ = self.footcontact(batch, input_lengths)
         return foot_contact
 
+    def input_process(self, inputs):
+        # process input
+        _, _, input_dim = inputs.shape
+        inputs = inputs.view(-1, input_dim)
+        
+        imu_inputs = inputs[:, :12 * self.imu_nums]
+        h_inputs = inputs[:, -1:].view(-1, 1)
+        
+        inputs = torch.cat([imu_inputs, h_inputs], dim=-1)
+        
+        return inputs
+
     def shared_step(self, batch):
         # unpack data
         inputs, outputs = batch
@@ -58,10 +71,14 @@ class FootContact(L.LightningModule):
 
         # target joints
         joints = outputs['joints']
+        B, S, _, _ = joints.shape
         target_joints = joints.view(joints.shape[0], joints.shape[1], -1)
 
         # ground-truth foot contacts
         foot_contacts = outputs['foot_contacts']
+        
+        # process input
+        imu_inputs = self.input_process(imu_inputs).view(B, S, -1)
         
         # predict foot-ground contact probability
         tran_input = torch.cat((target_joints, imu_inputs), dim=-1)

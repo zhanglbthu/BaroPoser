@@ -33,7 +33,7 @@ class Velocity(L.LightningModule):
         
         # model definitions
         self.vel = RNN(n_input=self.input_size, n_output=self.output_size, n_hidden=512,
-                                 n_rnn_layer=2, dropout=0.4, bidirectional=False)
+                                 n_rnn_layer=3, dropout=0.4, bidirectional=False)
         
         self.rnn_state = None
 
@@ -61,7 +61,7 @@ class Velocity(L.LightningModule):
 
         return vel
 
-    def predict_RNN(self, input, init_vel):
+    def predict_RNN(self, input):
         input_lengths = input.shape[0]
         
         input = input.unsqueeze(0)
@@ -82,7 +82,7 @@ class Velocity(L.LightningModule):
     
     def input_process(self, inputs):
         # process input
-        B, S, input_dim = inputs.shape
+        _, _, input_dim = inputs.shape
         inputs = inputs.view(-1, input_dim)
         
         imu_inputs = inputs[:, :12 * self.imu_nums]
@@ -134,14 +134,13 @@ class Velocity(L.LightningModule):
         # # velocity loss
         # loss = self.loss(pred_vel, target_vel)
 
-        # # position loss
-        # pred_tran = torch.sum(pred_vel, dim=1)
-        # target_tran = torch.sum(target_vel, dim=1)
-
-        # loss = self.loss(pred_tran, target_tran)
+        # position loss
+        pred_tran = torch.sum(pred_vel, dim=1)
+        target_tran = torch.sum(target_vel, dim=1)
+        loss = self.loss(pred_tran, target_tran)
         
-        # mobileposer loss
-        loss = self.compute_loss(pred_vel, target_vel)
+        # # mobileposer loss
+        # loss = self.compute_loss(pred_vel, target_vel)
 
         return loss
 
