@@ -51,15 +51,7 @@ class HeightPoserNet(L.LightningModule):
         self.feet_pos = self.j[10:12].clone() # [2, 3]
         self.floor_y = self.j[10:12, 1].min().item() # [1]
 
-        # constants
-        self.gravity_velocity = torch.tensor([0, joint_set.gravity_velocity, 0]).to(self.C.device)
-        self.prob_threshold = (0.5, 0.9)
-        self.num_past_frames = model_config.past_frames
-        self.num_future_frames = model_config.future_frames
-        self.num_total_frames = self.num_past_frames + self.num_future_frames
-
         # variables
-        self.last_lfoot_pos, self.last_rfoot_pos = (pos.to(self.C.device) for pos in self.feet_pos)
         self.last_root_pos = torch.zeros(3).to(self.C.device)
         self.last_joints = torch.zeros(24, 3).to(self.C.device)
         self.current_root_y = 0
@@ -138,14 +130,6 @@ class HeightPoserNet(L.LightningModule):
             root_rotation = input[:, 15:24].view(-1, 3, 3)
             pred_pose = self._reduced_glb_6d_to_full_local_mat(root_rotation=root_rotation, glb_reduced_pose=pred_pose)
         
-        # predict foot contact
-        pred_joint = self.bodymodel.forward_kinematics(pred_pose)[1].view(-1, 72)
-        
-        input = self.input_process(input)
-        input_contact = torch.cat((pred_joint, input), dim=1).view(1, -1, 97)
-        pred_contact = self.foot_contact(input_contact, [N])
-        pred_contact = pred_contact.view(-1, 2)
-        
         # predict velocity
         input = torch.cat((input[:, :24], input[:, -1:]), dim=1)
 
@@ -154,35 +138,7 @@ class HeightPoserNet(L.LightningModule):
         
         pred_vel = pred_vel / (datasets.fps/amass.vel_scale)
         
-        # translation = self.velocity_to_root_position(pred_vel)
-        
-        # fusion prediction
-        translation = []
-        joints = pred_joint.view(-1, 24, 3)
-        for i in range(N):
-            contact = pred_contact[i]
-            lfoot_pos, rfoot_pos = joints[i, 10], joints[i, 11]
-            if contact[0] > contact[1]:
-                contact_vel = self.last_lfoot_pos - lfoot_pos + self.gravity_velocity
-            else:
-                contact_vel = self.last_rfoot_pos - rfoot_pos + self.gravity_velocity
-            
-            root_vel = pred_vel[i]
-            contact_vel = root_vel
-            weight = self._prob_to_weight(contact.max())
-            velocity = art.math.lerp(root_vel, contact_vel, weight)
-            
-            # remove penetration
-            current_foot_y = self.current_root_y + min(lfoot_pos[1].item(), rfoot_pos[1].item())
-            if current_foot_y + velocity[1].item() <= self.floor_y:
-                velocity[1] = self.floor_y - current_foot_y
-            
-            self.current_root_y += velocity[1].item()
-            self.last_lfoot_pos, self.last_rfoot_pos = lfoot_pos, rfoot_pos
-            self.last_root_pos += velocity
-            translation.append(self.last_root_pos.clone())
-            
-        translation = torch.stack(translation)
+        translation = self.velocity_to_root_position(pred_vel)
 
         return pred_pose, translation
     
