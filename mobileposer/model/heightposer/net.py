@@ -44,7 +44,6 @@ class HeightPoserNet(L.LightningModule):
         # model definitions
         self.pose = poser if poser else Poser(combo_id=combo_id)                   # pose estimation model
         self.velocity = velocity if velocity else Velocity(combo_id=combo_id)      # velocity estimation model
-        self.foot_contact = foot_contact if foot_contact else FootContact(combo_id=combo_id)  # foot-ground contact model
 
         # base joints
         self.j, _ = self.bodymodel.get_zero_pose_joint_and_vertex() # [24, 3]
