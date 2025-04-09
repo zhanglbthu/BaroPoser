@@ -27,7 +27,7 @@ class Velocity(L.LightningModule):
         self.C = model_config
         self.hypers = train_hypers
         self.bodymodel = ParametricModel(paths.smpl_file, device=self.C.device)
-        self.input_size = 12 * self.imu_nums + 1 if self.C.vel_wh else 12 * self.imu_nums
+        self.input_size = 22 if self.C.vel_wh else 12 * self.imu_nums
         self.vel_joint = amass.vel_joint
         self.output_size = len(self.vel_joint) * 3
         
@@ -64,6 +64,7 @@ class Velocity(L.LightningModule):
     def predict_RNN(self, input):
         input_lengths = input.shape[0]
         
+        input = self.input_normalize(input, angular_vel=True)
         input = input.unsqueeze(0)
         
         pred_vel = self.forward(input, [input_lengths])
@@ -86,17 +87,86 @@ class Velocity(L.LightningModule):
         inputs = inputs.view(-1, input_dim)
         
         imu_inputs = inputs[:, :12 * self.imu_nums]
-        h_inputs = inputs[:, -1:].view(-1, 1)
         
-        inputs = torch.cat([imu_inputs, h_inputs], dim=-1)
+        if self.C.vel_wh:
+            h_inputs = inputs[:, -1:].view(-1, 1)
+        
+            inputs = torch.cat([imu_inputs, h_inputs], dim=-1)
+        else:
+            inputs = imu_inputs
         
         return inputs
+
+    def target_vel_normalize(self, target_vel, root_rot):
+        '''
+        convert target vel [N, 3] to relative pose
+        root_rot: [N, 3, 3]
+        '''
         
+        target_vel = target_vel.view(-1, 3, 1)
+        
+        target_vel_rel = root_rot.transpose(1, 2).matmul(target_vel)
+        
+        return target_vel_rel.view(-1, 3)
+
+    def input_normalize(self, pose_input, angular_vel=False, add_noise=False, global_coord=False):
+        if len(pose_input.shape) == 3:
+            B, S, _ = pose_input.shape
+        pose_input = pose_input.view(-1, 28)
+        glb_acc = pose_input[:, :6].view(-1, 2, 3)
+        glb_rot = pose_input[:, 6:24].view(-1, 2, 3, 3)
+        root_angular_vel = pose_input[:, 24:27].view(-1, 3)
+        rel_height = pose_input[:, 27:28].view(-1, 1)
+        
+        if add_noise:
+            # add noise to glb_rot
+            glb_rot = glb_rot.view(B, S, 2, 3, 3)
+            axis_angle_thigh = torch.randn(B, 1, 3).to(self.device) * self.C.noise_std
+            axis_angle_wrist = torch.randn(B, 1, 3).to(self.device) * self.C.noise_std
+            
+            wrist_rot = glb_rot[:, :, 0].view(B, S, 3, 3)
+            thigh_rot = glb_rot[:, :, 1].view(B, S, 3, 3)
+            
+            wrist_rot_noisy = torch.matmul(wrist_rot, art.math.axis_angle_to_rotation_matrix(axis_angle_wrist).view(B, 1, 3, 3)).view(B, S, 9)
+            thigh_rot_noisy = torch.matmul(thigh_rot, art.math.axis_angle_to_rotation_matrix(axis_angle_thigh).view(B, 1, 3, 3)).view(B, S, 9)
+            
+            glb_rot = torch.cat([wrist_rot_noisy, thigh_rot_noisy], dim=-1).view(-1, 2, 3, 3)
+            
+            # add noise to angular velocity
+            root_angular_vel_mat = art.math.axis_angle_to_rotation_matrix(root_angular_vel).view(B, S, 3, 3)
+            # angular_vel_noise = R_noise ^ T * angular_vel_mat * R_noise
+            root_angular_vel_noisy = torch.matmul(torch.matmul(art.math.axis_angle_to_rotation_matrix(axis_angle_thigh).view(B, 1, 3, 3).transpose(2, 3), 
+                                                               root_angular_vel_mat), 
+                                                  art.math.axis_angle_to_rotation_matrix(axis_angle_thigh).view(B, 1, 3, 3)).view(B, S, 9)
+            root_angular_vel = art.math.rotation_matrix_to_axis_angle(root_angular_vel_noisy).view(-1, 3)
+            
+            # add noise to relative height
+            rel_height = rel_height + torch.randn(B, S, 1).view(-1, 1).to(self.device) * self.C.h_noise
+        
+        if global_coord:
+            input = torch.cat((glb_acc.flatten(1), glb_rot.flatten(1), rel_height), dim=1)
+        else:
+            g = torch.tensor([0, -1, 0], dtype=torch.float32, device=pose_input.device)
+            root_rotation = glb_rot[:, 1] # [N, 3, 3]
+            g_root = root_rotation.transpose(1, 2).matmul(g) # [N, 3]
+            
+            acc = torch.cat((glb_acc[:, :1] - glb_acc[:, 1:], glb_acc[:, 1:]), dim=1).bmm(glb_rot[:, 1])
+            ori = torch.cat((glb_rot[:, 1:].transpose(2, 3).matmul(glb_rot[:, :1]), glb_rot[:, 1:]), dim=1)
+            
+            if angular_vel:
+                input = torch.cat((acc.flatten(1), ori[:, :1].flatten(1), root_angular_vel, rel_height, g_root), dim=1)
+            else:
+                input = torch.cat((acc.flatten(1), ori.flatten(1)), dim=1)
+        return input
+
     def shared_step(self, batch, add_noise=False):
         # unpack data
         inputs, outputs = batch
         imu_inputs, input_lengths = inputs
         outputs, _ = outputs
+        
+        # root rotation
+        root_rot = imu_inputs[:, :, 15:24].view(-1, 3, 3)
         
         # target joints
         joints = outputs['joints']
@@ -104,31 +174,34 @@ class Velocity(L.LightningModule):
 
         # target velocity
         target_vel = outputs['vels'][:, :, amass.vel_joint].view(B, S, -1)
-        target_vel = target_vel[:, :, [0, 2]]
+        target_vel = self.target_vel_normalize(target_vel, root_rot).view(B, S, -1)
 
         # predict joint velocity
-        # change: add noise
-        if add_noise:
-            imu_inputs_noisy = imu_inputs.clone()
-            rot = imu_inputs_noisy[..., 6:24].view(B, S, 2, 3, 3)   # shape: [B, S, 18]
+        # # change: add noise
+        # if add_noise:
+        #     imu_inputs_noisy = imu_inputs.clone()
+        #     rot = imu_inputs_noisy[..., 6:24].view(B, S, 2, 3, 3)   # shape: [B, S, 18]
             
-            axis_angle_thigh = torch.randn(B, 1, 3).to(self.device) * self.C.noise_std
-            axis_angle_wrist = torch.randn(B, 1, 3).to(self.device) * self.C.noise_std
+        #     axis_angle_thigh = torch.randn(B, 1, 3).to(self.device) * self.C.noise_std
+        #     axis_angle_wrist = torch.randn(B, 1, 3).to(self.device) * self.C.noise_std
             
-            wrist_rot = rot[:, :, 0].view(B, S, 3, 3)
-            thigh_rot = rot[:, :, 1].view(B, S, 3, 3)
+        #     wrist_rot = rot[:, :, 0].view(B, S, 3, 3)
+        #     thigh_rot = rot[:, :, 1].view(B, S, 3, 3)
             
-            wrist_rot_noisy = torch.matmul(wrist_rot, art.math.axis_angle_to_rotation_matrix(axis_angle_wrist).view(B, 1, 3, 3)).view(B, S, 9)
-            thigh_rot_noisy = torch.matmul(thigh_rot, art.math.axis_angle_to_rotation_matrix(axis_angle_thigh).view(B, 1, 3, 3)).view(B, S, 9)
+        #     wrist_rot_noisy = torch.matmul(wrist_rot, art.math.axis_angle_to_rotation_matrix(axis_angle_wrist).view(B, 1, 3, 3)).view(B, S, 9)
+        #     thigh_rot_noisy = torch.matmul(thigh_rot, art.math.axis_angle_to_rotation_matrix(axis_angle_thigh).view(B, 1, 3, 3)).view(B, S, 9)
             
-            rot_noisy = torch.cat([wrist_rot_noisy, thigh_rot_noisy], dim=-1)
+        #     rot_noisy = torch.cat([wrist_rot_noisy, thigh_rot_noisy], dim=-1)
 
-            imu_inputs_noisy[..., 6:24] = rot_noisy
+        #     imu_inputs_noisy[..., 6:24] = rot_noisy
             
-            imu_inputs = imu_inputs_noisy 
+        #     imu_inputs = imu_inputs_noisy 
             
-        imu_inputs = self.input_process(imu_inputs).view(B, S, -1)
-
+        # imu_inputs = self.input_process(imu_inputs).view(B, S, -1)
+        
+        # local representation
+        imu_inputs = self.input_normalize(imu_inputs, angular_vel=True, add_noise=add_noise).view(B, S, -1)
+        
         pred_vel, _, _ = self.vel(imu_inputs, input_lengths)
         
         # # velocity loss
