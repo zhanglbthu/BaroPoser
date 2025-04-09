@@ -91,7 +91,7 @@ class model_config:
     global_coord = False
     
     combo_id = 'lw_rp'
-    name = 'heightposer_pL_woinit_layer3_fusion'
+    name = 'heightposer_vel3_vertical_foot'
 
 class amass:    
     """AMASS dataset information."""
@@ -136,6 +136,8 @@ class amass:
     normalize_joints = [i for i in range(24) if i != 0]
     
     vel_joint = [*range(1)]
+    
+    vel_joint_input = [2, 18]
 
 class datasets:
     """Dataset information."""

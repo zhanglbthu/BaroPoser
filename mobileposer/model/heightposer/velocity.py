@@ -29,7 +29,7 @@ class Velocity(L.LightningModule):
         self.bodymodel = ParametricModel(paths.smpl_file, device=self.C.device)
         self.input_size = 12 * self.imu_nums + 1 if self.C.vel_wh else 12 * self.imu_nums
         self.vel_joint = amass.vel_joint
-        self.output_size = len(self.vel_joint) * 2
+        self.output_size = len(self.vel_joint) * 3
         
         # model definitions
         self.vel = RNN(n_input=self.input_size, n_output=self.output_size, n_hidden=512,

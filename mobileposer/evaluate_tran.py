@@ -51,38 +51,28 @@ def evaluate_tran(model, dataset, save_dir=None, debug=False):
             model.reset()
 
             pose_t, tran_t = y
-            joint_t, vel_t = j
-            vel_t = vel_t[:, amass.vel_joint].view(-1, len(amass.vel_joint)*3)
+            joint_t, vel_gt = j
+            vel_t = vel_gt[:, amass.vel_joint].view(-1, len(amass.vel_joint)*3)
+            vel_input = vel_gt[:, amass.vel_joint_input].view(-1, 2, 3)[..., 1].view(-1, 2)
             
             pose_t = art.math.r6d_to_rotation_matrix(pose_t)
             pose_t = pose_t.view(-1, 24, 3, 3)
             
-            if debug:
-                joint_p, joint_all_p, pose_p = model.predict(x, pose_t[0], debug=True)
-                if save_dir:
-                    torch.save({'pose_t': pose_t, 
-                                'pose_p': pose_p, 
-                                'joint_p': joint_p,
-                                'joint_all_p': joint_all_p,
-                                },
-                                save_dir / f"{idx}.pt")
-                continue
-            
             if model_config.winit:
-                pose_p, tran_p = model.predict_full(x, pose_t[0])
+                pose_p, tran_p = model.predict_full(x, pose_t[0], vel_input)
                 
             else:
                 online_results = [model.forward_online(f, tran=True) for f in torch.cat((x, x[-1].repeat(model_config.future_frames, 1)))]
                 pose_p, tran_p = [torch.stack(_)[model_config.future_frames:] for _ in zip(*online_results)]
             
             tran_t = tran_t.to(device)
-            _, _, vert_glb = body_model.forward_kinematics(pose_p, tran=tran_t, calc_mesh=True)
-            _, _, vert_local = body_model.forward_kinematics(pose_p, calc_mesh=True)
-            _, init_v = body_model.get_zero_pose_joint_and_vertex()
+            # _, _, vert_glb = body_model.forward_kinematics(pose_p, tran=tran_t, calc_mesh=True)
+            # _, _, vert_local = body_model.forward_kinematics(pose_p, calc_mesh=True)
+            # _, init_v = body_model.get_zero_pose_joint_and_vertex()
             
-            h_local = vert_local[:, 4362, 1] - init_v[4362, 1]
-            h_glb = vert_glb[:, 4362, 1] - init_v[4362, 1]
-            tran_p[:, 1] = h_glb - h_local
+            # h_local = vert_local[:, 4362, 1] - init_v[4362, 1]
+            # h_glb = vert_glb[:, 4362, 1] - init_v[4362, 1]
+            # tran_p[:, 1] = h_glb - h_local
             
             if True:
                 # compute gt move distance at every frame 

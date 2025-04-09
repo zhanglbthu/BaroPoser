@@ -44,7 +44,7 @@ class Poser(L.LightningModule):
                                 n_output=self.output_dim, 
                                 n_hidden=512, 
                                 n_rnn_layer=2, 
-                                dropout=0.4,
+                                dropout=0.4, 
                                 init_size=self.init_size,
                                 bidirectional=False) # pose estimation model
         
