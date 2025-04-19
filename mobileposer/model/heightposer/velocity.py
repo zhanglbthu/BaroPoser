@@ -181,30 +181,30 @@ class Velocity(L.LightningModule):
         # target_vel = target_vel[:, :, [0, 2]]
 
         # predict joint velocity
-        # # change: add noise
-        # if add_noise:
-        #     imu_inputs_noisy = imu_inputs.clone()
-        #     rot = imu_inputs_noisy[..., 6:24].view(B, S, 2, 3, 3)   # shape: [B, S, 18]
+        # change: add noise
+        if add_noise:
+            imu_inputs_noisy = imu_inputs.clone()
+            rot = imu_inputs_noisy[..., 6:24].view(B, S, 2, 3, 3)   # shape: [B, S, 18]
             
-        #     axis_angle_thigh = torch.randn(B, 1, 3).to(self.device) * self.C.noise_std
-        #     axis_angle_wrist = torch.randn(B, 1, 3).to(self.device) * self.C.noise_std
+            axis_angle_thigh = torch.randn(B, 1, 3).to(self.device) * self.C.noise_std
+            axis_angle_wrist = torch.randn(B, 1, 3).to(self.device) * self.C.noise_std
             
-        #     wrist_rot = rot[:, :, 0].view(B, S, 3, 3)
-        #     thigh_rot = rot[:, :, 1].view(B, S, 3, 3)
+            wrist_rot = rot[:, :, 0].view(B, S, 3, 3)
+            thigh_rot = rot[:, :, 1].view(B, S, 3, 3)
             
-        #     wrist_rot_noisy = torch.matmul(wrist_rot, art.math.axis_angle_to_rotation_matrix(axis_angle_wrist).view(B, 1, 3, 3)).view(B, S, 9)
-        #     thigh_rot_noisy = torch.matmul(thigh_rot, art.math.axis_angle_to_rotation_matrix(axis_angle_thigh).view(B, 1, 3, 3)).view(B, S, 9)
+            wrist_rot_noisy = torch.matmul(wrist_rot, art.math.axis_angle_to_rotation_matrix(axis_angle_wrist).view(B, 1, 3, 3)).view(B, S, 9)
+            thigh_rot_noisy = torch.matmul(thigh_rot, art.math.axis_angle_to_rotation_matrix(axis_angle_thigh).view(B, 1, 3, 3)).view(B, S, 9)
             
-        #     rot_noisy = torch.cat([wrist_rot_noisy, thigh_rot_noisy], dim=-1)
+            rot_noisy = torch.cat([wrist_rot_noisy, thigh_rot_noisy], dim=-1)
 
-        #     imu_inputs_noisy[..., 6:24] = rot_noisy
+            imu_inputs_noisy[..., 6:24] = rot_noisy
             
-        #     imu_inputs = imu_inputs_noisy 
+            imu_inputs = imu_inputs_noisy 
             
-        # imu_inputs = self.input_process(imu_inputs).view(B, S, -1)
+        imu_inputs = self.input_process(imu_inputs).view(B, S, -1)
         
-        # local representation
-        imu_inputs = self.input_normalize(imu_inputs, angular_vel=True, add_noise=add_noise).view(B, S, -1)
+        # # local representation
+        # imu_inputs = self.input_normalize(imu_inputs, angular_vel=True, add_noise=add_noise).view(B, S, -1)
         
         pred_vel, _, _ = self.vel(imu_inputs, input_lengths)
         
