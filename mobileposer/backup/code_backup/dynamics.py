@@ -72,21 +72,17 @@ class PhysicsOptimizer:
         self.model.update_kinematics(q, qdot, np.zeros(self.model.qdot_size))
         Js = [np.empty((0, self.model.qdot_size))]
         collision_points, collision_joints = [], []
-        # * 判断每个测试关节是否发生接触
         for joint_name in self.test_contact_joints:
             joint_id = vars(Body)[joint_name]
             pos = self.model.calc_body_position(q, joint_id)
-            # * 判断是否接触
             if joint_id == Body.LFOOT and c_ref[0] > 0.5 and pos[1] <= self.params['floor_y'] + 0.03 or \
                joint_id == Body.RFOOT and c_ref[1] > 0.5 and pos[1] <= self.params['floor_y'] + 0.03 or \
                pos[1] <= self.params['floor_y']:
                 collision_joints.append(joint_name)
-                # * 构建接触点和雅可比矩阵
                 for ps in self.support_polygon + pos:
                     collision_points.append(ps)
                     pb = self.model.calc_base_to_body_coordinates(q, joint_id, ps)
                     Js.append(self.model.calc_point_Jacobian(q, joint_id, pb))
-        # * 堆叠所有接触点的雅可比矩阵
         Js = np.vstack(Js)
         nc = len(collision_points)
 
@@ -110,6 +106,21 @@ class PhysicsOptimizer:
             As1.append(A)  # 72 * 75
             bs1.append(b)  # 72
 
+        # joint position PD controller (using root velocity + ref pose to determine target joint position)
+        if False:
+            for joint_name in ['ROOT', 'LHIP', 'RHIP', 'SPINE1', 'LKNEE', 'RKNEE', 'SPINE2', 'LANKLE', 'RANKLE',
+                               'SPINE3', 'LFOOT', 'RFOOT', 'NECK', 'LCLAVICLE', 'RCLAVICLE', 'HEAD', 'LSHOULDER',
+                               'RSHOULDER', 'LELBOW', 'RELBOW', 'LWRIST', 'RWRIST', 'LHAND', 'RHAND']:
+                joint_id = vars(Body)[joint_name]
+                cur_vel = self.model.calc_point_velocity(q, qdot, joint_id)
+                cur_pos = self.model.calc_body_position(q, joint_id)
+                tar_pos = self.model.calc_body_position(q_ref, joint_id) - q_ref[:3] + q[:3] + v_ref[0] * self.params['delta_t']
+                a_des = 3600 * (tar_pos - cur_pos) - 60 * cur_vel
+                A = self.model.calc_point_Jacobian(q, joint_id)
+                b = -self.model.calc_point_acceleration(q, qdot, np.zeros(75), joint_id) + a_des
+                As1.append(A * 2)
+                bs1.append(b * 2)
+
         # joint position PD controller (using joint velocity to determine target joint position)
         if True:
             for joint_name, v in zip(['ROOT', 'LHIP', 'RHIP', 'SPINE1', 'LKNEE', 'RKNEE', 'SPINE2', 'LANKLE', 'RANKLE',
@@ -123,6 +134,33 @@ class PhysicsOptimizer:
                 b = -self.model.calc_point_acceleration(q, qdot, np.zeros(75), joint_id) + a_des
                 As1.append(A * self.params['coeff_jvel'])
                 bs1.append(b * self.params['coeff_jvel'])
+
+        # joint velocity (without Jdot * qdot term)
+        if False:
+            for joint_name, v in zip(
+                    ['ROOT', 'LHIP', 'RHIP', 'SPINE1', 'LKNEE', 'RKNEE', 'SPINE2', 'LANKLE', 'RANKLE',
+                     'SPINE3', 'LFOOT', 'RFOOT', 'NECK', 'LCLAVICLE', 'RCLAVICLE', 'HEAD', 'LSHOULDER',
+                     'RSHOULDER', 'LELBOW', 'RELBOW', 'LWRIST', 'RWRIST', 'LHAND', 'RHAND'], v_ref):
+                joint_id = vars(Body)[joint_name]
+                A = self.model.calc_point_Jacobian(q, joint_id)
+                b = (-self.model.calc_point_velocity(q, qdot, joint_id) + v) / self.params['delta_t']
+                As1.append(A * 2)
+                bs1.append(b * 2)
+
+        # IMU acceleration
+        if False:
+            for joint_name, a in zip(['LWRIST', 'RWRIST', 'LKNEE', 'RKNEE', 'HEAD', 'ROOT'], a_ref):
+                joint_id = vars(Body)[joint_name]
+                offset = np.zeros(3)
+                A = self.model.calc_point_Jacobian(q, joint_id, offset)
+                b = -self.model.calc_point_acceleration(q, qdot, np.zeros(self.model.qdot_size), joint_id, offset) + a
+                bs1.append(b * self.params['coeff_acc'])
+                As1.append(A * self.params['coeff_acc'])
+
+        # lambda size
+        if False:
+            As2.append(np.eye(nc * 3) * self.params['coeff_lambda_old'])
+            bs2.append(np.zeros(nc * 3))
 
         # Signorini’s conditions of lambda
         if True:

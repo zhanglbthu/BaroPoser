@@ -52,9 +52,13 @@ class PoseDataset(Dataset):
 
     def _prepare_dataset(self):
         
-        data_folder = paths.processed_datasets / ('eval' if (self.finetune or self.evaluate) else '')
+        # data_folder = paths.processed_datasets / ('eval' if (self.finetune or self.evaluate) else '')
         
-        data_files = self._get_data_files(data_folder)
+        # data_files = self._get_data_files(data_folder)
+        
+        data_folder = paths.processed_datasets / 'eval'
+        
+        data_files = ['dip_test.pt']
         
         data = {key: [] for key in ['imu_inputs', 'pose_outputs', 'joint_outputs', 'tran_outputs', 'vel_outputs', 'foot_outputs']}
         # count = 0
@@ -83,6 +87,8 @@ class PoseDataset(Dataset):
         heights = file_data.get('heights', [None] * len(poses))
         
         for acc, ori, pose, tran, joint, foot, height in zip(accs, oris, poses, trans, joints, foots, heights):
+            # print frames
+            print(f"frames: {len(acc)}")
             
             # select only the first 5 IMUs (lw, rw, lh, rh, head)
             acc, ori = acc[:, :5]/amass.acc_scale, ori[:, :5]
@@ -96,6 +102,8 @@ class PoseDataset(Dataset):
             joint = joint.view(-1, 24, 3)
             
             self._process_single_combo_data(acc, ori, pose, joint, tran, foot, data, height, joint_global)
+            
+            break
 
     def _process_single_combo_data(self, acc, ori, pose, joint, tran, foot, data, height, joint_glb=None):
         '''
@@ -123,10 +131,6 @@ class PoseDataset(Dataset):
         
         imu_input = torch.cat([imu_input, height_rel], dim=1) # [N, 28]
         
-        if self.wheights:
-            height = height.view(-1, 2)
-            imu_input = torch.cat([imu_input, height], dim=1)
-        
         data_len = len(imu_input) if self.evaluate else datasets.window_length # N or window_length
         
         for key, value in zip(['imu_inputs', 'pose_outputs', 'joint_outputs', 'tran_outputs'],
@@ -147,6 +151,11 @@ class PoseDataset(Dataset):
         data['vel_outputs'].extend(torch.split(vel * (datasets.fps / amass.vel_scale), data_len))
         
         if foot is not None:
+            data['foot_outputs'].extend(torch.split(foot, data_len))
+        else:
+            # init foot: [N, 2]
+            foot = torch.zeros(1, 2)
+            foot = foot.repeat(vel.shape[0], 1)
             data['foot_outputs'].extend(torch.split(foot, data_len))
 
     def __getitem__(self, idx):

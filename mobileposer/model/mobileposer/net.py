@@ -132,6 +132,9 @@ class MobilePoserNet(L.LightningModule):
     @torch.no_grad()
     def forward_online(self, data, input_lengths=None, tran=False):
         
+        # select imu from data
+        data = data[:24]
+        
         imu = data.repeat(self.num_total_frames, 1) if self.imu is None else torch.cat((self.imu[1:], data.view(1, -1)))
 
         # forward the pose prediction model
