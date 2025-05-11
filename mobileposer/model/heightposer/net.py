@@ -27,7 +27,6 @@ class HeightPoserNet(L.LightningModule):
     def __init__(self, 
                  poser: Poser=None, 
                  velocity: Velocity=None,
-                 foot_contact: FootContact=None,
                  finetune: bool=False, wheights: bool=False, 
                  combo_id: str="lw_rp_h"):
         super().__init__()
@@ -44,7 +43,6 @@ class HeightPoserNet(L.LightningModule):
         # model definitions
         self.pose = poser if poser else Poser(combo_id=combo_id)                   # pose estimation model
         self.velocity = velocity if velocity else Velocity(combo_id=combo_id)      # velocity estimation model
-        self.foot_contact = foot_contact if foot_contact else FootContact(combo_id=combo_id)  # foot-ground probability model
 
         # base joints
         self.j, _ = self.bodymodel.get_zero_pose_joint_and_vertex() # [24, 3]
@@ -131,10 +129,9 @@ class HeightPoserNet(L.LightningModule):
             pred_pose = self._reduced_glb_6d_to_full_local_mat(root_rotation=root_rotation, glb_reduced_pose=pred_pose)
         
         # predict velocity
-        input = torch.cat((input[:, :24], input[:, -1:], vel_input), dim=1)
+        # input = torch.cat((input[:, :24], input[:, -1:], vel_input), dim=1)
 
         pred_vel = self.velocity.predict_RNN(input)
-        # pred_vel = torch.cat([pred_vel[:, :1], torch.zeros(N, 1).to(self.C.device), pred_vel[:, 1:]], dim=1)
         
         pred_vel = pred_vel / (datasets.fps/amass.vel_scale)
         

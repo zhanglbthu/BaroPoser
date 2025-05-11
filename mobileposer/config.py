@@ -4,9 +4,9 @@ from enum import Enum, auto
 
 class train_hypers:
     """Hyperparameters for training."""
-    batch_size = 256
+    batch_size = 1
     num_workers = 8
-    num_epochs = 200
+    num_epochs = 50
     accelerator = "gpu"
     device = 1
     lr = 3e-4
@@ -84,11 +84,11 @@ class model_config:
     
     h_noise = 0.0
     
-    # mobile poser config
-    physics = False
-    
     # coordinate config
     global_coord = False
+    
+    # mobile poser config
+    physics = False
     
     combo_id = 'lw_rp'
     name = 'mobileposer'
