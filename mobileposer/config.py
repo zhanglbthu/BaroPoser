@@ -75,10 +75,10 @@ class model_config:
     data_heights = False
 
     # height poser config
-    winit = True
+    winit = False
     
     poser_wh =  True
-    vel_wh = True
+    vel_wh = False
     
     noise_std = 0.1
     
@@ -91,7 +91,7 @@ class model_config:
     global_coord = False
     
     combo_id = 'lw_rp'
-    name = 'heightposer_vel3_vertical_foot'
+    name = 'mobileposer'
 
 class amass:    
     """AMASS dataset information."""

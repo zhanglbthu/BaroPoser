@@ -160,7 +160,6 @@ def evaluate_pose(model, dataset, save_dir=None, debug=False, processed=None):
             pose_t = pose_t.view(-1, 24, 3, 3)  
             
             if debug:
-
                 joint_p, joint_all_p, pose_p = model.predict(x, pose_t[0], debug=True)
                 if save_dir:
                     torch.save({'pose_t': pose_t, 
@@ -177,6 +176,7 @@ def evaluate_pose(model, dataset, save_dir=None, debug=False, processed=None):
                 if model_config.winit:
                     pose_p = model.predict(x, pose_t[0], poser_only=True)
                 else:
+                    x = x[:, :24]
                     online_results = [model.forward_online(f) for f in torch.cat((x, x[-1].repeat(model_config.future_frames, 1)))]
                     pose_p = torch.stack(online_results[model_config.future_frames:], dim=0)
             

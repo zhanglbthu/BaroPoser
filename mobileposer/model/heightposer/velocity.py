@@ -64,6 +64,8 @@ class Velocity(L.LightningModule):
     def predict_RNN(self, input):
         input_lengths = input.shape[0]
         
+        input = self.input_process(input)
+        
         input = input.unsqueeze(0)
         
         pred_vel = self.forward(input, [input_lengths])
@@ -82,13 +84,20 @@ class Velocity(L.LightningModule):
     
     def input_process(self, inputs):
         # process input
-        _, _, input_dim = inputs.shape
+        if len(inputs.shape) == 3:
+            _, _, input_dim = inputs.shape
+        else:
+            _, input_dim = inputs.shape
         inputs = inputs.view(-1, input_dim)
         
         imu_inputs = inputs[:, :12 * self.imu_nums]
-        h_inputs = inputs[:, -1:].view(-1, 1)
         
-        inputs = torch.cat([imu_inputs, h_inputs], dim=-1)
+        if self.C.vel_wh:
+            h_inputs = inputs[:, -1:].view(-1, 1)
+            
+            inputs = torch.cat([imu_inputs, h_inputs], dim=-1)
+        else:
+            inputs = imu_inputs
         
         return inputs
         
@@ -104,7 +113,7 @@ class Velocity(L.LightningModule):
 
         # target velocity
         target_vel = outputs['vels'][:, :, amass.vel_joint].view(B, S, -1)
-        target_vel = target_vel[:, :, [0, 2]]
+        # target_vel = target_vel[:, :, [0, 2]]
 
         # predict joint velocity
         # change: add noise

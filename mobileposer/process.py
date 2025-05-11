@@ -513,7 +513,7 @@ if __name__ == "__main__":
     if args.dataset == "amass":
         process_amass(heights=args.heights)
     elif args.dataset == "totalcapture":
-        # process_totalcapture_raw(debug=True)
+        process_totalcapture_raw(debug=True)
         process_totalcapture_from_raw(heights=args.heights)
     elif args.dataset == "imuposer":
         process_imuposer(split="train")
