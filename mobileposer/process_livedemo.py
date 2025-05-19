@@ -17,36 +17,42 @@ from mobileposer.data import PoseDataset
 import numpy as np
 import matplotlib
 from utils.data_utils import _foot_min
+from tqdm import tqdm
 
 colors = matplotlib.colormaps['tab10'].colors
 body_model = art.ParametricModel(paths.smpl_file, device='cuda')
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--name', type=str, default='default')
+    parser.add_argument('--model', type=str, default='default')
+    parser.add_argument('--data_name', type=str, default='default')
     args = parser.parse_args()
     
     device = torch.device("cuda")
     clock = Clock()
     
     # load model
-    model_name = args.name
+    model_name = args.model.split('_')[0]
     if model_name == 'imuposer':
         model_path = 'data/checkpoints/imuposer/lw_rp/base_model.pth'
         model = load_imuposer_model(model_path=model_path, combo_id=model_config.combo_id)
     elif model_name == 'mobileposer':
         model_path = 'data/checkpoints/mobileposer/lw_rp/base_model.pth'
         model = load_mobileposer_model(model_path=model_path, combo_id=model_config.combo_id)
+    elif model_name == 'heightposer':
+        model_path = 'data/checkpoints/' + args.model + '/lw_rp/base_model.pth'
+        model = load_heightposer_model(model_path=model_path, combo_id=model_config.combo_id)
     else:
-        raise ValueError(f"Model {model_name} not supported.")
+        raise ValueError(f"Model {args.model} not supported.")
     print('Model loaded.')
     
     # load livedemo data
-    data_name = "freestyle_20250317_164707"
-    data_path = "data/livedemo/record/" + data_name + ".pt"
-    save_dir = "data/livedemo/processed/" + data_name
+    data_type = 'noitom'
+    data_name = args.data_name
+    data_path = "data/livedemo/raw/" + data_type + "/" + data_name + ".pt"
+    save_dir = "data/livedemo/processed/" + data_type + "/" + data_name
     os.makedirs(save_dir, exist_ok=True)
-    save_path = save_dir + "/" + model_name + ".pt"
+    save_path = save_dir + "/" + args.model + ".pt"
     data = torch.load(data_path)
     
     model.eval()
@@ -60,7 +66,17 @@ if __name__ == '__main__':
     
     input = torch.cat([acc.flatten(1), ori.flatten(1)], dim=1)
     
-    online_results = [model.forward_online(f) for f in torch.cat((input, input[-1].repeat(model_config.future_frames, 1)))]
-    pose_p = torch.stack(online_results)[model_config.future_frames:].view(-1, 24, 3, 3)
+    frames = torch.cat((input, input[-1].repeat(model_config.future_frames, 1)))
+
+    # 加进度条
+    if model_name == 'heightposer':
+        init_pose = torch.eye(3, device='cuda').repeat(24, 1, 1)
+        pose_p = model.predict(input, init_pose, poser_only=True)
+    else:
+        online_results = []
+        for f in tqdm(frames, desc="Running forward_online"):
+            online_results.append(model.forward_online(f))
+            
+        pose_p = torch.stack(online_results)[model_config.future_frames:].view(-1, 24, 3, 3)
     
     torch.save({'pose': pose_p}, save_path)

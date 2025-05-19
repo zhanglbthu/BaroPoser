@@ -4,9 +4,9 @@ from enum import Enum, auto
 
 class train_hypers:
     """Hyperparameters for training."""
-    batch_size = 1
+    batch_size = 256
     num_workers = 8
-    num_epochs = 50
+    num_epochs = 150
     accelerator = "gpu"
     device = 1
     lr = 3e-4
@@ -73,25 +73,15 @@ class model_config:
 
     # data config
     data_heights = False
-
-    # height poser config
-    winit = False
     
-    poser_wh =  True
-    vel_wh = False
-    
-    noise_std = 0.1
-    
-    h_noise = 0.0
-    
-    # coordinate config
-    global_coord = False
+    # judge biRNN/RNN
+    winit = True
     
     # mobile poser config
     physics = False
     
     combo_id = 'lw_rp'
-    name = 'mobileposer'
+    name = 'heightposer_RNN(wInit)'
 
 class amass:    
     """AMASS dataset information."""
@@ -198,8 +188,7 @@ class joint_set:
     gravity_velocity = -0.018
 
     full = list(range(0, 24))
-    reduced = [0, 1, 3, 4, 5, 6, 9, 12, 13, 14, 15, 16, 17, 18, 19]
-    reduced_old = [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 14, 15, 16, 17, 18, 19]
+    reduced = [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 14, 15, 16, 17, 18, 19]
     leaf_joint = [7, 8, 10, 11, 20, 21, 22, 23]
     
     ignored = [0, 7, 8, 10, 11, 20, 21, 22, 23]

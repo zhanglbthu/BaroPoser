@@ -52,13 +52,9 @@ class PoseDataset(Dataset):
 
     def _prepare_dataset(self):
         
-        # data_folder = paths.processed_datasets / ('eval' if (self.finetune or self.evaluate) else '')
+        data_folder = paths.processed_datasets / ('eval' if (self.finetune or self.evaluate) else '')
         
-        # data_files = self._get_data_files(data_folder)
-        
-        data_folder = paths.processed_datasets / 'eval'
-        
-        data_files = ['dip_test.pt']
+        data_files = self._get_data_files(data_folder)
         
         data = {key: [] for key in ['imu_inputs', 'pose_outputs', 'joint_outputs', 'tran_outputs', 'vel_outputs', 'foot_outputs']}
         # count = 0
@@ -87,8 +83,6 @@ class PoseDataset(Dataset):
         heights = file_data.get('heights', [None] * len(poses))
         
         for acc, ori, pose, tran, joint, foot, height in zip(accs, oris, poses, trans, joints, foots, heights):
-            # print frames
-            print(f"frames: {len(acc)}")
             
             # select only the first 5 IMUs (lw, rw, lh, rh, head)
             acc, ori = acc[:, :5]/amass.acc_scale, ori[:, :5]
@@ -102,8 +96,6 @@ class PoseDataset(Dataset):
             joint = joint.view(-1, 24, 3)
             
             self._process_single_combo_data(acc, ori, pose, joint, tran, foot, data, height, joint_global)
-            
-            break
 
     def _process_single_combo_data(self, acc, ori, pose, joint, tran, foot, data, height, joint_glb=None):
         '''
@@ -115,21 +107,8 @@ class PoseDataset(Dataset):
         
         combo_acc = acc[:, c]
         combo_ori = ori[:, c]
-        
-        root_ori = combo_ori[:, -1] # [N, 3, 3]
-        
-        # compute angular velocity
-        root_angular_vel = art.math.rotation_matrix_to_axis_angle(root_ori[:-1].transpose(1, 2).bmm(root_ori[1:]))
-        root_angular_vel = torch.cat((torch.zeros(1, 3), root_angular_vel)).view(-1, 3)
-        
-        # compute relative heights
-        height_rel = (height[:, 0] - height[:, 1]).view(-1, 1)
 
         imu_input = torch.cat([combo_acc.flatten(1), combo_ori.flatten(1)], dim=1) # [N, 24]
-        
-        imu_input = torch.cat([imu_input, root_angular_vel], dim=1) # [N, 27]
-        
-        imu_input = torch.cat([imu_input, height_rel], dim=1) # [N, 28]
         
         data_len = len(imu_input) if self.evaluate else datasets.window_length # N or window_length
         

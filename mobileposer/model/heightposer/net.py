@@ -15,8 +15,6 @@ from mobileposer.helpers import *
 import mobileposer.articulate as art
 
 from model.heightposer.poser import Poser
-from model.heightposer.velocity import Velocity
-from model.heightposer.footcontact import FootContact
 
 class HeightPoserNet(L.LightningModule):
     """
@@ -26,14 +24,11 @@ class HeightPoserNet(L.LightningModule):
 
     def __init__(self, 
                  poser: Poser=None, 
-                 velocity: Velocity=None,
-                 finetune: bool=False, wheights: bool=False, 
                  combo_id: str="lw_rp_h"):
         super().__init__()
 
         # constants
         self.C = model_config
-        self.finetune = finetune
         self.hypers = train_hypers 
 
         # body model
@@ -42,7 +37,6 @@ class HeightPoserNet(L.LightningModule):
 
         # model definitions
         self.pose = poser if poser else Poser(combo_id=combo_id)                   # pose estimation model
-        self.velocity = velocity if velocity else Velocity(combo_id=combo_id)      # velocity estimation model
 
         # base joints
         self.j, _ = self.bodymodel.get_zero_pose_joint_and_vertex() # [24, 3]
@@ -145,11 +139,9 @@ class HeightPoserNet(L.LightningModule):
         
         if poser_only:
             pred_pose = self.pose.predict_RNN(input, init_pose)
-            if self.C.global_coord:
-                pred_pose = self._reduced_global_to_full(pred_pose)
-            else:
-                root_rotation = input[:, 15:24].view(-1, 3, 3)
-                pred_pose = self._reduced_glb_6d_to_full_local_mat(root_rotation=root_rotation, glb_reduced_pose=pred_pose)
+            
+            pred_pose = self._reduced_global_to_full(pred_pose)
+
             return pred_pose
         
         # predict joints
