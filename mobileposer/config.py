@@ -70,6 +70,14 @@ class model_config:
     past_frames = 40
     future_frames = 5
     total_frames = past_frames + future_frames
+    
+    local_coord = True
+    rel_height = True
+    vel_wh = True
+    
+    # noise
+    noise_std = 0.1
+    h_noise = 0.02
 
     # data config
     data_heights = False
@@ -81,7 +89,7 @@ class model_config:
     physics = False
     
     combo_id = 'lw_rp'
-    name = 'heightposer_RNN(wInit)'
+    name = 'heightposer_vel_wh_lownoise'
 
 class amass:    
     """AMASS dataset information."""
@@ -182,6 +190,64 @@ class datasets:
     # Window length of IMU and Pose data 
     window_length = 150
 
+class realdata:
+    time_align = {
+        'sub1': 
+            {'ArmRaising': [80, 426], 
+             'Climbing': [50, 828], 
+             'LegLifting': [40, 687], 
+             'Running': [160, 410], 
+             'Sitting': [10, 489],
+             'Steps': [70, 515], 
+             'Swing': [70, 200]},
+        'sub2': 
+            {'ArmRaising': [100, 700],
+             'Bending': [100, 1000],
+             'Climbing': [100, 1000], 
+             'Jumping': [100, 650],
+             'LegLifting': [50, 880], 
+             'Picking': [150, 800],
+             'Running': [130, 1000], 
+             'Sitting1': [100, 900],
+             'Sitting2': [130, 880],
+             'Steps': [100, 800], 
+             'Swing': [70, 800],
+             'Walking1': [140, 950],
+             'Walking2': [100, 1000]},
+        'sub3': 
+            {'ArmRaising': [20, 550],
+             'Bending': [50, 500],
+             'Climbing': [20, 700], 
+             'LegLifting': [30, 750], 
+             'Picking': [10, 850],
+             'Running': [20, 850], 
+             'Sitting': [40, 800],
+             'Steps': [30, 600], 
+             'Swing': [20, 800],
+             'Walking': [20, 850]},
+        'sub4': 
+            {'ArmRaising': [40, 600],
+             'Bending': [40, 900],
+             'Climbing': [30, 1000], 
+             'LegLifting': [20, 750], 
+             'Picking': [20, 700],
+             'Running': [20, 1000], 
+             'Sitting': [20, 1000], 
+             'Swing': [30, 985],
+             'Walking': [20, 950]},
+        'sub5': 
+            {'ArmRaising': [20, 450],
+             'Bending': [20, 650],
+             'Climbing': [20, 600], 
+             'Jumping': [20, 400],
+             'LegLifting': [30, 850], 
+             'Picking': [20, 700],
+             'Running': [20, 800],
+             'Steps': [20, 500], 
+             'Swing': [20, 850],
+             'Walking': [20, 850]},
+    }
+    
 
 class joint_set:
     """Joint sets configurations."""
@@ -189,6 +255,7 @@ class joint_set:
 
     full = list(range(0, 24))
     reduced = [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 14, 15, 16, 17, 18, 19]
+    reduced_local = [0, 1, 3, 4, 5, 6, 9, 12, 13, 14, 15, 16, 17, 18, 19]
     leaf_joint = [7, 8, 10, 11, 20, 21, 22, 23]
     
     ignored = [0, 7, 8, 10, 11, 20, 21, 22, 23]
@@ -203,6 +270,7 @@ class joint_set:
     n_full = len(full)
     n_ignored = len(ignored)
     n_reduced = len(reduced)
+    n_reduced_local = len(reduced_local)
     n_pose_init = len(joint_init)
 
     lower_body = [0, 1, 2, 4, 5, 7, 8, 10, 11]

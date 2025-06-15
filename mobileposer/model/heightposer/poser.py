@@ -29,10 +29,12 @@ class Poser(L.LightningModule):
         # input dimensions
         imu_set = amass.combos_mine[combo_id]
         imu_num = len(imu_set)
-        imu_input_dim = imu_num * 12
+        imu_input_dim = 21 if self.C.local_coord else imu_num * 12
+        if self.C.rel_height:
+            imu_input_dim += 1
         
         self.input_dim = imu_input_dim
-        self.output_dim = 16 * 6
+        self.output_dim = 15 * 6 if self.C.local_coord else 16 * 6
         self.init_size = self.output_dim
             
         # model definitions
@@ -80,8 +82,12 @@ class Poser(L.LightningModule):
         glb_rot, _ = self.bodymodel.forward_kinematics(init_pose.view(-1, 24, 3, 3))
         glb_rot_6d = art.math.rotation_matrix_to_r6d(glb_rot).view(-1, 24, 6)
         
-        input = self.input_process(input, add_noise=False).view(-1, 24)
-        init_p = glb_rot_6d.view(-1, 24, 6)[:, joint_set.reduced].view(1, -1)
+        input = self.input_process(input, add_noise=False).view(-1, self.input_dim)
+        
+        if self.C.local_coord:
+            init_p = self.target_pose_normalize(glb_rot_6d).view(-1, 24, 6)[:, joint_set.reduced_local].view(1, -1)
+        else:
+            init_p = glb_rot_6d.view(-1, 24, 6)[:, joint_set.reduced].view(1, -1)
             
         input = (input.unsqueeze(0), init_p)
         
@@ -97,16 +103,65 @@ class Poser(L.LightningModule):
     def input_process(self, pose_input, add_noise=False):
         if len(pose_input.shape) == 3:
             B, S, _ = pose_input.shape
-        pose_input = pose_input.view(-1, 24)
+            
+        pose_input = pose_input.view(-1, 28)
         glb_acc = pose_input[:, :6].view(-1, 2, 3)
         glb_rot = pose_input[:, 6:24].view(-1, 2, 3, 3)
+        root_angular_vel = pose_input[:, 24:27].view(-1, 3)
+        rel_height = pose_input[:, 27:28].view(-1, 1)
         
         if add_noise:
-            pass
+            glb_rot = glb_rot.view(B, S, 2, 3, 3)
+            axis_angle_thigh = torch.randn(B, 1, 3).to(self.device) * self.C.noise_std
+            axis_angle_wrist = torch.randn(B, 1, 3).to(self.device) * self.C.noise_std
+            
+            wrist_rot = glb_rot[:, :, 0].view(B, S, 3, 3)
+            thigh_rot = glb_rot[:, :, 1].view(B, S, 3, 3)
+            
+            wrist_rot_noisy = torch.matmul(wrist_rot, art.math.axis_angle_to_rotation_matrix(axis_angle_wrist).view(B, 1, 3, 3)).view(B, S, 9)
+            thigh_rot_noisy = torch.matmul(thigh_rot, art.math.axis_angle_to_rotation_matrix(axis_angle_thigh).view(B, 1, 3, 3)).view(B, S, 9)
+            
+            glb_rot = torch.cat([wrist_rot_noisy, thigh_rot_noisy], dim=-1).view(-1, 2, 3, 3)
+            
+            root_angular_vel_mat = art.math.axis_angle_to_rotation_matrix(root_angular_vel).view(B, S, 3, 3)
+            root_angular_vel_noisy = torch.matmul(torch.matmul(art.math.axis_angle_to_rotation_matrix(axis_angle_thigh).view(B, 1, 3, 3).transpose(2, 3), 
+                                                               root_angular_vel_mat), 
+                                                  art.math.axis_angle_to_rotation_matrix(axis_angle_thigh).view(B, 1, 3, 3)).view(B, S, 9)
+            root_angular_vel = art.math.rotation_matrix_to_axis_angle(root_angular_vel_noisy).view(-1, 3)
+            
+            # add noise to relative height
+            rel_height = rel_height + torch.randn(B, S, 1).view(-1, 1).to(self.device) * self.C.h_noise
         
-        input = torch.cat((glb_acc.flatten(1), glb_rot.flatten(1)), dim=1)
+        if self.C.local_coord:
+            g = torch.tensor([0, -1, 0], dtype=torch.float32, device=pose_input.device)
+            root_rotation = glb_rot[:, 1] # [N, 3, 3]
+            g_root = root_rotation.transpose(1, 2).matmul(g)
+            
+            acc = torch.cat((glb_acc[:, :1] - glb_acc[:, 1:], glb_acc[:, 1:]), dim=1).bmm(glb_rot[:, 1])
+            ori = torch.cat((glb_rot[:, 1:].transpose(2, 3).matmul(glb_rot[:, :1]), glb_rot[:, 1:]), dim=1)
+            
+            if self.C.rel_height:
+                input = torch.cat((acc.flatten(1), ori[:, :1].flatten(1), root_angular_vel, rel_height, g_root), dim=1)
+            else:
+                input = torch.cat((acc.flatten(1), ori[:, :1].flatten(1), root_angular_vel, g_root), dim=1)
+        else:
+            input = torch.cat((glb_acc.flatten(1), glb_rot.flatten(1), rel_height), dim=1)
+        
         return input
-    
+
+    def target_pose_normalize(self, target_pose):
+        '''
+        convert target pose [N, 24, 6] to relative pose
+        '''
+        
+        target_pose = target_pose.view(-1, 24, 6)
+        target_pose = art.math.r6d_to_rotation_matrix(target_pose).view(-1, 24, 3, 3)
+        
+        target_pose_rel = target_pose[:, 2:3].transpose(2, 3).matmul(target_pose[:, :24])
+        
+        target_pose_rel_r6d = art.math.rotation_matrix_to_r6d(target_pose_rel)
+        return target_pose_rel_r6d 
+
     def shared_step(self, batch, add_noise=False):
         # unpack data
         inputs, outputs = batch
@@ -119,12 +174,16 @@ class Poser(L.LightningModule):
 
         # predict pose
         pose_input = imu_inputs  
-
-        pose_input = self.input_process(pose_input, add_noise=False, global_coord=True).view(B, S, -1)
-        init_pose = target_pose[:, 0].view(-1, 24, 6)[:, joint_set.reduced].view(B, -1)
-        
-        pose_input = (pose_input, init_pose)
-        pose_t = target_pose.view(B, S, 24, 6)[:, :, joint_set.reduced].view(B, S, -1)
+        pose_input = self.input_process(pose_input, add_noise=add_noise).view(B, S, -1)
+        if self.C.local_coord:
+            target_pose = self.target_pose_normalize(target_pose).view(B, S, -1)
+            init_pose = target_pose[:, 0].view(-1, 24, 6)[:, joint_set.reduced_local].view(B, -1)
+            pose_input = (pose_input, init_pose)
+            pose_t = target_pose.view(B, S, 24, 6)[:, :, joint_set.reduced_local].view(B, S, -1)
+        else:
+            init_pose = target_pose[:, 0].view(-1, 24, 6)[:, joint_set.reduced].view(B, -1)
+            pose_input = (pose_input, init_pose)
+            pose_t = target_pose.view(B, S, 24, 6)[:, :, joint_set.reduced].view(B, S, -1)
         
         pose_p = self(pose_input, input_lengths)
 

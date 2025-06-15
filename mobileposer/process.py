@@ -16,8 +16,8 @@ from utils.data_utils import _foot_contact, _get_heights, _foot_min, _get_ground
 import sys
 
 # left wrist, right wrist, left thigh, right thigh, head, pelvis, left shank, right shank
-vi_mask = torch.tensor([1961, 5424, 876, 4362, 411, 3021, 1176, 4662])
-ji_mask = torch.tensor([18, 19, 1, 2, 15, 0, 4, 5])
+vi_mask = torch.tensor([1961, 5424, 876, 4362, 411, 3021])
+ji_mask = torch.tensor([18, 19, 1, 2, 15, 0])
 body_model = ParametricModel(paths.smpl_file)
 
 def _syn_acc(v, smooth_n=4, fps=60):
