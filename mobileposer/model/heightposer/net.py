@@ -15,6 +15,7 @@ from mobileposer.helpers import *
 import mobileposer.articulate as art
 
 from model.heightposer.poser import Poser
+from model.heightposer.velocity import Velocity
 
 class HeightPoserNet(L.LightningModule):
     """
@@ -23,7 +24,8 @@ class HeightPoserNet(L.LightningModule):
     """
 
     def __init__(self, 
-                 poser: Poser=None, 
+                 poser: Poser=None,
+                 velocity: Velocity=None,
                  combo_id: str="lw_rp_h"):
         super().__init__()
 
@@ -37,6 +39,7 @@ class HeightPoserNet(L.LightningModule):
 
         # model definitions
         self.pose = poser if poser else Poser(combo_id=combo_id)                   # pose estimation model
+        self.velocity = velocity if velocity else Velocity(combo_id=combo_id)       # velocity estimation model
 
         # base joints
         self.j, _ = self.bodymodel.get_zero_pose_joint_and_vertex() # [24, 3]
@@ -130,64 +133,24 @@ class HeightPoserNet(L.LightningModule):
 
         return pred_pose, translation
     
-    def predict(self, input, init_pose, detail=False, tran=False, poser_only=False):
-        
-        input_lengths = input.shape[0]
-        
-        if poser_only:
-            pred_pose = self.pose.predict_RNN(input, init_pose)
+    def predict(self, input, init_pose, poser_only=False):
+        pred_pose = self.pose.predict_RNN(input, init_pose)
             
-            if self.C.local_coord:
-                root_rotation = input[:, 15:24].view(-1, 3, 3)
-                pred_pose = self._reduced_glb_6d_to_full_local_mat(root_rotation=root_rotation, glb_reduced_pose=pred_pose)
-            else:
-                pred_pose = self._reduced_global_to_full(pred_pose)
-                
+        if self.C.local_coord:
+            root_rotation = input[:, 15:24].view(-1, 3, 3)
+            pred_pose = self._reduced_glb_6d_to_full_local_mat(root_rotation=root_rotation, glb_reduced_pose=pred_pose)
+        else:
+            pred_pose = self._reduced_global_to_full(pred_pose)
+            
+        if poser_only:    
             return pred_pose
         
-        # predict joints
-        input_joint = input
-        pred_joint = self.joints.predict_RNN(input_joint, init_pose)
-        
-        # predict joint all            
-        input_joint_all = torch.cat((pred_joint, input), dim=1)
-        if not self.C.ja_wheights and self.C.wheights:
-            input_joint_all = input_joint_all[:, :-2]
-
-        pred_joint_all = self.jointsAll.predict_RNN(input_joint_all)
-        
         # predict velocity
-        input_vel = torch.cat((pred_joint_all, input), dim=1)
-        pred_vel_all = self.velocity.predict_RNN(input_vel, torch.zeros(72).to(self.C.device))
-        pred_vel_all = pred_vel_all / (datasets.fps/amass.vel_scale)
-        pred_root_vel = pred_vel_all[:, :3] 
+        pred_vel = self.velocity.predict_RNN(input)
+        pred_vel = pred_vel / (datasets.fps/amass.vel_scale)
         
-        # predict pose
-        input_pose = torch.cat((pred_joint_all, input), dim=1)
-        
-        # remove heights
-        if model_config.wheights:
-            input_pose = input_pose[:, :-2]
-            
-        pred_pose = self.pose(input_pose.unsqueeze(0), [input_lengths])
-        
-        pred_pose = self._reduced_global_to_full(pred_pose.squeeze(0))
-        
-        if detail:
-            return pred_joint, pred_joint_all, pred_pose
-        
-        if tran:
-            translation = self.velocity_to_root_position(pred_root_vel)
-            return pred_pose, translation
-        
-        return pred_pose
-    
-    def predict_vel(self, input):
-        # predict velocity
-        init_vel = torch.zeros(12).to(self.device)
-        pred_vel = self.velocity.predict_RNN(input, init_vel)
-        
-        return pred_vel
+        translation = self.velocity_to_root_position(pred_vel)
+        return pred_pose, translation
     
     @staticmethod
     def velocity_to_root_position(velocity):

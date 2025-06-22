@@ -89,7 +89,7 @@ class model_config:
     physics = False
     
     combo_id = 'lw_rp'
-    name = 'heightposer_vel_wh_lownoise'
+    name = 'heightposer_vel'
 
 class amass:    
     """AMASS dataset information."""

@@ -130,7 +130,7 @@ class MobilePoserNet(L.LightningModule):
         return pred_pose, pred_joints, pred_vel, foot_contact
 
     @torch.no_grad()
-    def forward_online(self, data, input_lengths=None, tran=False):
+    def forward_online(self, data, tran=False):
         
         # select imu from data
         data = data[:24]

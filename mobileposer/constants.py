@@ -34,7 +34,7 @@ MOBILEPOSER = {
 
 HEIGHTPOSER = {
     'poser': HeightPoser,
-    # 'velocity': HeightVelocity,
+    'velocity': HeightVelocity,
 }
 
 # Calibration constants
