@@ -7,18 +7,11 @@ Tsinghua University
 
 </div>
 
-### [Paper](https://www.arxiv.org/abs/2508.03313)
+### [Paper](https://www.arxiv.org/abs/2508.03313) | [Project Page](https://www.arxiv.org/abs/2508.03313)
 Code for paper "BaroPoser: Real-time Human Motion Tracking from IMUs and Barometers in Everyday Devices", which is accepted by UIST 2025.
 
-### Pipeline
 <div align="center">
-    <img src="./assets/pipeline.png" width="70%">
-</div>
-
-### Results
-
-<div align="center">
-    <img src="./assets/BaroPoser.jpg" width="70%">
+    <img src="./assets/teaser.png" width="100%">
 </div>
 
 
