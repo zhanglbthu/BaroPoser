@@ -11,14 +11,14 @@ from argparse import ArgumentParser
 from pathlib import Path
 import wandb
 import sys
-from mobileposer.config import *
+from config import *
 
-from mobileposer.constants import IMUPOSER, MOBILEPOSER, HEIGHTPOSER
-from mobileposer.data import PoseDataModule
-from mobileposer.utils.file_utils import (
+from constants import IMUPOSER, MOBILEPOSER, HEIGHTPOSER
+from data import PoseDataModule
+from mutils.file_utils import (
     get_datestring, 
 )
-from mobileposer.config import paths, train_hypers, finetune_hypers, model_config
+from config import paths, train_hypers, finetune_hypers, model_config
 
 # set precision for Tensor cores
 torch.set_float32_matmul_precision('medium')

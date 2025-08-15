@@ -9,10 +9,10 @@ import random
 import lightning as L
 from tqdm import tqdm 
 
-import mobileposer.articulate as art
-from mobileposer.config import *
-from mobileposer.utils import *
-from mobileposer.helpers import *
+import articulate as art
+from config import *
+from utils import *
+from helpers import *
 
 from utils.data_utils import *
 from config import amass

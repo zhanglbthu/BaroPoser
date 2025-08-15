@@ -9,10 +9,10 @@ from torch.optim.lr_scheduler import StepLR
 from tqdm import tqdm
 import time
 
-from mobileposer.config import *
-from mobileposer.utils.model_utils import reduced_pose_to_full
-from mobileposer.helpers import *
-import mobileposer.articulate as art
+from config import *
+from utils.model_utils import reduced_pose_to_full
+from helpers import *
+import articulate as art
 
 from model.imuposer_local.poser import Poser
 

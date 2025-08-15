@@ -21,7 +21,7 @@ class finetune_hypers:
     lr = 5e-5
 
 class paths:
-    """Relevant paths for MobilePoser. Change as necessary."""
+    """Relevant paths for  Change as necessary."""
     root_dir = Path().absolute()
     checkpoint = root_dir / "data" / "checkpoints"
     smpl_file = root_dir / "smpl/basicmodel_m.pkl"

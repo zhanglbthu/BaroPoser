@@ -6,9 +6,9 @@ from argparse import ArgumentParser
 from tqdm import tqdm
 import glob
 
-from mobileposer.articulate.model import ParametricModel
-from mobileposer.articulate import math
-from mobileposer.config import paths, datasets
+from articulate.model import ParametricModel
+from articulate import math
+from config import paths, datasets
 
 from pathlib import Path
 import articulate as art

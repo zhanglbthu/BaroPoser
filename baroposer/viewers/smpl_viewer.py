@@ -1,10 +1,10 @@
 import torch
 import numpy as np
 
-from mobileposer.helpers import *
-from mobileposer.config import *
-from mobileposer.constants import NUM_VERTICES
-import mobileposer.articulate as art
+from helpers import *
+from config import *
+from constants import NUM_VERTICES
+import articulate as art
 
 
 class SMPLViewer:

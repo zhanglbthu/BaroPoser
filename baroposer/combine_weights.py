@@ -11,12 +11,12 @@ from tqdm import tqdm
 from argparse import ArgumentParser
 from config import *
 
-# from mobileposer.models import MobilePoserNet, Poser, Joints, Velocity, FootContact, Velocity_new
-from mobileposer.constants import IMUPOSER, MOBILEPOSER, HEIGHTPOSER
+# from models import MobilePoserNet, Poser, Joints, Velocity, FootContact, Velocity_new
+from constants import IMUPOSER, MOBILEPOSER, HEIGHTPOSER
 from model.imuposer_local.net import IMUPoserNet
 from model.mobileposer.net import MobilePoserNet
 from model.heightposer.net import HeightPoserNet
-from mobileposer.utils.file_utils import get_file_number, get_best_checkpoint
+from utils.file_utils import get_file_number, get_best_checkpoint
 
 def load_module_weights(modules, module_name, weight_path):
     try:

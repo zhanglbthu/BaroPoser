@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import List, Dict, Union
 from argparse import ArgumentParser
 
-from mobileposer.config import *
+from config import *
 
 
 def load_file(file_path: Path):

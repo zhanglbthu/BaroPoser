@@ -1,7 +1,7 @@
 import torch
 
-from mobileposer.config import *
-from mobileposer.config import model_config
+from config import *
+from config import model_config
 
 def load_imuposer_model(model_path: str, combo_id: str):
     from model.imuposer_local.net import IMUPoserNet

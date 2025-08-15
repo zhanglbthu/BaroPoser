@@ -4,18 +4,18 @@ import torch
 from argparse import ArgumentParser
 from tqdm import tqdm
 
-from mobileposer.config import *
-from mobileposer.helpers import * 
-import mobileposer.articulate as art
-from mobileposer.utils.model_utils import load_imuposer_model, load_imuposer_glb_model, load_mobileposer_model, load_heightposer_model
-from mobileposer.data import PoseDataset
+from config import *
+from helpers import * 
+import articulate as art
+from utils.model_utils import load_imuposer_model, load_imuposer_glb_model, load_mobileposer_model, load_heightposer_model
+from data import PoseDataset
 from pathlib import Path
-from mobileposer.utils.file_utils import (
+from utils.file_utils import (
     get_best_checkpoint
 )
-from mobileposer.config import model_config, realdata
+from config import model_config, realdata
 from process import _foot_ground_probs
-from mobileposer.articulate.model import ParametricModel
+from articulate.model import ParametricModel
 
 body_model = ParametricModel(paths.smpl_file, device=model_config.device)
 

@@ -9,14 +9,14 @@ from torch.optim.lr_scheduler import StepLR
 from tqdm import tqdm
 import time
 
-from mobileposer.config import *
-from mobileposer.utils.model_utils import reduced_pose_to_full
-from mobileposer.helpers import *
-import mobileposer.articulate as art
-from model.mobileposer.poser import Poser
-from model.mobileposer.joints import Joints
-from model.mobileposer.velocity import Velocity
-from model.mobileposer.footcontact import FootContact
+from config import *
+from utils.model_utils import reduced_pose_to_full
+from helpers import *
+import articulate as art
+from model.moblieposer.poser import Poser
+from model.moblieposer.joints import Joints
+from model.moblieposer.velocity import Velocity
+from model.moblieposer.footcontact import FootContact
 
 class MobilePoserNet(L.LightningModule):
     """
