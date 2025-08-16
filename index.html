@@ -4,13 +4,13 @@
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>GlobalPose</title>
+    <title>BaroPoser</title>
     <!-- Bootstrap -->
     <link href="css/bootstrap-4.3.1.css" rel="stylesheet">
   </head>
   <body class="bg-light">
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-      <a class="navbar-brand" href="https://xinyu-yi.github.io/GlobalPose/">GlobalPose</a>
+      <a class="navbar-brand" href="https://github.com/zhanglbthu/BaroPoser/">BaroPoser</a>
       <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"></span>
       </button>
@@ -19,11 +19,11 @@
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">More works <span class="sr-only">(current)</span></a>
             <div class="dropdown-menu" aria-labelledby="navbarDropdown">
-              <a class="dropdown-item" href="https://xinyu-yi.github.io/TransPose/">TransPose</a>
-              <a class="dropdown-item" href="https://xinyu-yi.github.io/PIP/">PIP</a>
+              <a class="dropdown-item" href="https://github.com/zhanglbthu/BaroPoser/">BaroPoser</a>
+              <!-- <a class="dropdown-item" href="https://xinyu-yi.github.io/PIP/">PIP</a>
               <a class="dropdown-item" href="https://xinyu-yi.github.io/EgoLocate/">EgoLocate</a>
-			  <a class="dropdown-item" href="https://xinyu-yi.github.io/PNP/">PNP</a>
-			  <a class="dropdown-item" href="https://xinyu-yi.github.io/GlobalPose/">GlobalPose</a>
+			        <a class="dropdown-item" href="https://xinyu-yi.github.io/PNP/">PNP</a>
+			        <a class="dropdown-item" href="https://xinyu-yi.github.io/GlobalPose/">GlobalPose</a> -->
               <!--div class="dropdown-divider"></div>
               <a class="dropdown-item" href="https://xinyu-yi.github.io/">Xinyu Yi</a-->
             </div>
@@ -48,12 +48,12 @@
       <div class="row">
         <div class="col-12">
           <div class="container mt-5 mb-2">
-            <h1 class="text-center">Improving Global Motion Estimation</h1>
-            <h2 class="text-center">in Sparse IMU-based Motion Capture with Physics</h2>
+            <h1 class="text-center">BaroPoser: Real-time Human Motion Tracking from IMUs and Barometers in Everyday Devices</h1>
+            <!-- <h2 class="text-center">in Sparse IMU-based Motion Capture with Physics</h2> -->
             <div class="text-center container mb-4 mt-4 ablack">
               <p>
+                <a href="https://zhanglbthu.github.io/">Libo Zhang</a>&nbsp;&nbsp;&nbsp;&nbsp;
                 <a href="https://xinyu-yi.github.io/">Xinyu Yi</a>&nbsp;&nbsp;&nbsp;&nbsp;
-                <a href="https://shaohua-pan.github.io/">Shaohua Pan</a>&nbsp;&nbsp;&nbsp;&nbsp;
                 <a href="http://xufeng.site/">Feng Xu</a>
                 <br>
                 <a href="https://www.tsinghua.edu.cn/">Tsinghua University</a>
@@ -61,7 +61,7 @@
               <br>
               <p>
                 <i>
-                  Accepted by <a href="https://s2025.siggraph.org/">SIGGRAPH 2025</a> (Journal track)
+                  Accepted by <a href="https://uist.acm.org/2025/">UIST 2025</a>
                 </i>
               </p>
             </div>
@@ -74,11 +74,11 @@
     <div class="container mb-4">
       <div class="container">
         <div class="row">
-          <img src="images/teaser.jpg" class="img-fluid mt-2 mb-2" alt="Teaser">
+          <img src="images/teaser.png" class="img-fluid mt-2 mb-2" alt="Teaser">
         </div>
       </div>
       <div class="text-center mt-2">
-		GlobalPose captures human motion from 6 IMUs in <strong>unconstrained 3D space</strong> (left). The method reconstructs human motion along with <strong>3D-space contacts, contact forces, joint torques, and interacting proxy surfaces</strong> in real time (right).
+		  Live comparison between prior work MobilePoser (blue) and BaroPoser (orange) on pose and translation estimation. BaroPoser leverages <strong>barometric information</strong> to improve pose accuracy and enables reconstruction of human motions involving height variations.
       </div>
     </div>
       
@@ -86,15 +86,15 @@
       <div class="row mb-1">
         <div class="text-center col-4">
           <div class="container mb-2" style="width: 6rem"><img src="images/paper.svg" alt="Download Paper" class="card-img"/></div>
-          <a class="btn btn-danger btn-lg" href="https://arxiv.org/abs/2505.05010" role="button">Paper</a>
+          <a class="btn btn-danger btn-lg" href="https://www.arxiv.org/abs/2508.03313" role="button">Paper</a>
         </div>
         <div class="text-center col-4">
           <div class="container mb-2" style="width: 6rem"><img src="images/video.svg" alt="Download Video" class="card-img"/></div>    
-          <a class="btn btn-info btn-lg" href="https://github.com/Xinyu-Yi/GlobalPose/raw/page/videos/demo.mp4" role="button">Video</a>
+          <a class="btn btn-info btn-lg" href="https://www.youtube.com/watch?v=01u0Pj_dzSs" role="button">Video</a>
         </div>
         <div class="text-center col-4">
           <div class="container mb-2" style="width: 6rem"><img src="images/code.svg" alt="Download Code" class="card-img"/></div>    
-          <a class="btn btn-success btn-lg" href="https://github.com/Xinyu-Yi/GlobalPose" role="button">Code</a>
+          <a class="btn btn-success btn-lg" href="https://github.com/zhanglbthu/BaroPoser" role="button">Code</a>
         </div>
       </div>
 	  <!--div class="text-center mt-5"><i>Codes will be released in June (I'll try my best). &gt;_&lt;</i></div-->
@@ -105,20 +105,13 @@
       <h2 class="text-center">Abstract</h2>
       <div class="container">
         <p>
-          By learning human motion priors, motion capture can be achieved by 6
- inertial measurement units (IMUs) in recent years with the development of
- deep learning techniques, even though the sensor inputs are sparse and noisy.
- However, human global motions are still challenging to be reconstructed
- by IMUs. This paper aims to solve this problem by involving physics. It
- proposes a physical optimization scheme based on multiple contacts to
- enable physically plausible translation estimation in the full 3D space where
- the z-directional motion is usually challenging for previous works. It also
- considers gravity in local pose estimation which well constrains human
- global orientations and refines local pose estimation in a joint estimation
- manner. Experiments demonstrate that our method achieves more accurate
- motion capture for both local poses and global motions. Furthermore, by
- deeply integrating physics, we can also estimate 3D contact, contact forces,
- joint torques, and interacting proxy surfaces.
+          In recent years, tracking human motion using IMUs from everyday devices such as smartphones and smartwatches has gained increasing popularity. 
+          However, due to the sparsity of sensor measurements and the lack of datasets capturing human motion over uneven terrain, 
+          existing methods often struggle with pose estimation accuracy and are typically limited to recovering movements on flat terrain only. 
+          To this end, we present BaroPoser, the first method that combines IMU and barometric data recorded by a smartphone and a smartwatch to estimate human pose and global translation in real time. 
+          By leveraging barometric readings, we estimate sensor height changes, which provide valuable cues for both improving the accuracy of human pose estimation and predicting global translation on non-flat terrain. 
+          Furthermore, we propose a local thigh coordinate frame to disentangle local and global motion input for better pose representation learning. We evaluate our method on both public benchmark datasets and real-world recordings. 
+          Quantitative and qualitative results demonstrate that our approach outperforms the state-of-the-art (SOTA) methods that use IMUs only with the same hardware configuration.
         </p>
       </div>
       <hr>
@@ -130,7 +123,7 @@
         <div class="row">
           <div class="col-12">
             <div class="embed-responsive embed-responsive-16by9">
-              <iframe class="embed-responsive-item" src="https://www.youtube.com/embed/2kBgIQgnS3g" allowfullscreen></iframe>
+              <iframe class="embed-responsive-item" src="https://www.youtube.com/embed/01u0Pj_dzSs" allowfullscreen></iframe>
 			  <!--video controls><source src="https://github.com/Xinyu-Yi/GlobalPose/raw/page/videos/demo.mp4" type="video/mp4"></video-->
             </div>
           </div>
@@ -142,13 +135,10 @@
     <div class="container mt-3" id="acknowledgments">
       <h2 class="text-center">Acknowledgments</h2>
       <div class="container mb-4">
-          <p>This work was supported by the National Key R&amp;D Program of
- China (2023YFC3305600), the Zhejiang Provincial Natural Science
- Foundation (LDT23F02024F02), and the NSFC (No.61822111, 62021002).
- This work was also supported by THUIBCS, Tsinghua University,
- and BLBCI, Beijing Municipal Education Commission. The authors
- would like to thank Wenbin Lin and Yunzhe Shao for their help on
- the live demos. Feng Xu is the corresponding author.</p>
+          <p>This work was supported by the National Key R&D Program of China (2023YFC3305600), 
+            the Zhejiang Provincial Natural Science Foundation (LDT23F02024F02), 
+            and the NSFC (No.61822111, 62021002). This work was also supported by THUIBCS, Tsinghua University, 
+            and BLBCI, Beijing Municipal Education Commission. Feng Xu is the corresponding author.</p>
       </div>
 	  <hr>
     </div>
@@ -158,15 +148,11 @@
       <div class="container">
         <div class="container pt-3" style="background-color: #EEF0F2">
           <pre class="mb-3 ml-3">
-@article{yi2025improving,
-  title={Improving Global Motion Estimation in Sparse IMU-based Motion Capture with Physics},
-  author={Yi, Xinyu and Pan, Shaohua and Xu, Feng},
-  journal={ACM Transactions on Graphics (TOG)},
-  volume={44},
-  number={4},
-  pages={1--16},
-  year={2025},
-  publisher={ACM New York, NY, USA}
+@article{zhang2025baroposer,
+  title={BaroPoser: Real-time Human Motion Tracking from IMUs and Barometers in Everyday Devices},
+  author={Zhang, Libo and Yi, Xinyu and Xu, Feng},
+  journal={arXiv preprint arXiv:2508.03313},
+  year={2025}
 }
           </pre>
         </div>
@@ -178,7 +164,7 @@
 		  <div class="row">
 			<div class="col-lg-4 col-md-6 col-sm-6 mb-md-0">
 			  <address>
-				<br>Contact: <a href="mailto:yixy20@mails.tsinghua.edu.cn">yixy20@mails.tsinghua.edu.cn</a>
+				<br>Contact: <a href="mailto:zhanglb21@mails.tsinghua.edu.cn">zhanglb21@mails.tsinghua.edu.cn</a>
 			  </address>
 			</div>
 			<div class="col-lg-3 col-12">
@@ -199,7 +185,7 @@
       <div class="container">
         <div class="row">
           <div class="col-12">
-            <p>Copyright © Xinyu Yi. All rights reserved.</p>
+            <p>Copyright © Libo Zhang. All rights reserved.</p>
           </div>
         </div>
       </div>
